@@ -3,24 +3,20 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
-# Ensure PyTerrier is initialized
+
 if not pt.started():
     pt.init()
 
-# Import the necessary PyTerrier components
 from pyterrier_t5 import MonoT5ReRanker
-from pyterrier.measures import R, NDCG
+from pyterrier.measures import *
 
-# Assume the custom loader is available
+
 from code_base.wiki_loader_pyt import wiki_loader_pyt
 
-# ==============================================================================
-## TUNABLE CONSTANTS
-# ==============================================================================
 
 # Data Configuration
 DATA_PATH = "/mnt/c/Users/prath/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
-DATA_SPLIT = "dev"
+DATA_SPLIT = "test"
 
 # PyTerrier Index Configuration
 INDEX_PATH = "./index/wiki_musique_index/data.properties"  # Path to the Terrier index metadata
@@ -33,27 +29,14 @@ TOPIC_LIMIT = 1000
 # Defines the range of 'c' to experiment with.
 # Example: [10, 50, 100, 200, 500, 1000]
 C_VALUES = [int(i) for i in np.linspace(10, 100, 10, dtype=int)] # e.g., [10, 55, 100]
-
-# T5 Re-Ranker Configuration
 T5_BATCH_SIZE = 16
+EXPERIMENT_BATCH_SIZE = 20
+EVAL_METRICS = [R@10, NDCG@10]
 
-# PyTerrier Experiment Configuration
-EXPERIMENT_BATCH_SIZE = 10
-EVAL_METRICS = [R@10, NDCG@10] # Metrics to evaluate
 
-# ==============================================================================
-## DATA LOADING AND PREPROCESSING
-# ==============================================================================
 
 print("Loading data...")
 docs_df, topics_df, qrels_df = wiki_loader_pyt(DATA_PATH, DATA_SPLIT)
-
-# Document cleaning
-docs_df = docs_df.dropna(subset=['docno', 'text'])
-docs_df['docno'] = docs_df['docno'].astype(str)
-docs_df = docs_df[docs_df['text'].str.strip() != '']
-print("Document DataFrame info after cleanup:")
-print(docs_df.info())
 
 def preprocess_query(query):
     """Simple query cleaning: remove punctuation/special chars and lowercases."""
@@ -62,18 +45,11 @@ def preprocess_query(query):
 
 topics_df['query'] = topics_df['query'].apply(preprocess_query)
 
-# Limit topics
 topics = topics_df[:TOPIC_LIMIT]
-
-# Load Index Reference
 index_ref = pt.IndexFactory.of(INDEX_PATH)
 
-# Initialize Re-ranker
 mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
-# ==============================================================================
-## ITERATIVE EXPERIMENT
-# ==============================================================================
 
 results = {
     'c': C_VALUES,
@@ -85,16 +61,15 @@ results = {
 
 print(f"\nStarting experiment for initial cutoff (c) in: {C_VALUES}")
 
+
+
+
+
 for c in C_VALUES:
-    # Define the BM25 retrieval for the current cutoff 'c'
     bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
     bm25_retrieved = bm25 % c
-
-    # Define the Re-ranking pipeline
-    # The MonoT5 re-ranker needs the 'text' of the retrieved documents
     pipeline = bm25_retrieved >> pt.text.get_text(index_ref, "text") >> mono_t5_reranker
 
-    # Run the experiment
     experiment_results = pt.Experiment(
         [bm25_retrieved, pipeline],
         topics,
@@ -105,22 +80,21 @@ for c in C_VALUES:
         batch_size=EXPERIMENT_BATCH_SIZE,
     )
 
-    # Store results
     results['BM25_R@10'].append(float(experiment_results['R@10'][0]))
     results['Pipeline_R@10'].append(float(experiment_results['R@10'][1]))
-    results['BM25_NDCG@10'].append(float(experiment_results['ndcg'][0]))
-    results['Pipeline_NDCG@10'].append(float(experiment_results['ndcg'][1]))
+    results['BM25_NDCG@10'].append(float(experiment_results['nDCG@10'][0]))
+    results['Pipeline_NDCG@10'].append(float(experiment_results['nDCG@10'][1]))
 
     print(f"c={c}: BM25 R@10={results['BM25_R@10'][-1]:.4f}, Pipeline R@10={results['Pipeline_R@10'][-1]:.4f} | BM25 NDCG@10={results['BM25_NDCG@10'][-1]:.4f}, Pipeline NDCG@10={results['Pipeline_NDCG@10'][-1]:.4f}")
 
-# Convert results to DataFrame
 results_df = pd.DataFrame(results)
+results_df.to_csv(DATA_PATH+"/experiment_1_results.csv", index=False)
 print("\nFinal Results DataFrame:")
 print(results_df)
 
-# ==============================================================================
+
 ## CHART GENERATION
-# ==============================================================================
+
 
 def plot_metrics(df, metric_suffix, title, ylabel, filename):
     """Generates and saves a plot for a given metric."""
@@ -140,13 +114,13 @@ def plot_metrics(df, metric_suffix, title, ylabel, filename):
     # Use log scale for x-axis if there is a wide range of C_VALUES
     if len(df['c']) > 2 and (df['c'].max() / df['c'].min() > 5):
         plt.xscale('log')
-        plt.xticks(df['c'], labels=[str(v) for v in df['c']]) # Ensure log scale ticks are legible
+        plt.xticks(df['c'], labels=[str(v) for v in df['c']])
 
     plt.tight_layout()
     plt.savefig(DATA_PATH+filename)
     print(f"Chart saved as {DATA_PATH+filename}")
 
-# Chart 1: R@10 vs. Cutoff
+# R@10 vs. Cutoff
 plot_metrics(
     results_df,
     'R@10',
@@ -156,7 +130,7 @@ plot_metrics(
 )
 
 
-# Chart 2: NDCG@10 vs. Cutoff
+# NDCG@10 vs. Cutoff
 plot_metrics(
     results_df,
     'NDCG@10',
@@ -166,9 +140,8 @@ plot_metrics(
 )
 
 
-# ==============================================================================
 ## LINEAR REGRESSION ANALYSIS (R@10)
-# ==============================================================================
+
 
 print("\n--- Linear Regression Analysis (log(c) vs R@10) ---")
 
@@ -231,5 +204,3 @@ plt.xscale('log')
 plt.xticks(results_df['c'], labels=[str(v) for v in results_df['c']])
 plt.tight_layout()
 plt.savefig('cutoff_R_at_10_log_regression.png')
-plt.savefig(+'/cutoff_R_at_10_log_regression.png')
-print("Chart saved as cutoff_R_at_10_log_regression.png")

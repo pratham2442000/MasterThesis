@@ -47,8 +47,16 @@ def wiki_loader_pyt(data_path: str, split: str) -> pd.DataFrame:
 
     topics_df = pd.DataFrame(topics_list)
     qrels_df = pd.DataFrame(qrels_list)
+
+    docs_df = docs_df.dropna(subset=['docno', 'text'])
+    docs_df['docno'] = docs_df['docno'].astype(str)
+    docs_df = docs_df[docs_df['text'].str.strip() != '']
+    print("Document DataFrame info after cleanup:")
+    print(docs_df.info())
+    print("/n/n")
     print(f"Created topics_df with {len(topics_df)} queries.")
     print(f"Created qrels_df with {len(qrels_df)} relevance judgments.")
+
 
     return docs_df, topics_df, qrels_df
 

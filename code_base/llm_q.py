@@ -1,52 +1,93 @@
-from dexter.llms.llama_engine import LlamaEngine
-import torch
 import json
-import re
+import os
+from typing import List
 
-print(torch.__version__)
-print(torch.cuda.is_available())
-print(torch.version.cuda)
-model_name = "meta-llama/Llama-2-7b-chat-hf"
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
 
-llm_instance = LlamaEngine(data="", model_name=model_name, temperature=0.3, top_n=1)
+try:
+    from langchain_openai import ChatOpenAI
+
+    _MODEL_BACKEND = "openai"
+except Exception:
+    # Fallback to community ChatOpenAI import path (older LangChain versions)
+    try:
+        from langchain.chat_models import ChatOpenAI  # type: ignore
+
+        _MODEL_BACKEND = "openai"
+    except Exception as e:  # pragma: no cover
+        raise ImportError(
+            "LangChain OpenAI backend not available. Install "
+            "'langchain-openai' or set up a compatible chat model."
+        ) from e
 
 
+def _build_model(temperature: float = 0.2):
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise EnvironmentError("OPENAI_API_KEY is not set in environment.")
+    # Model name via env; default to gpt-4o-mini for cost/speed
+    model_name = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+    return ChatOpenAI(model=model_name, temperature=temperature)
 
-def query_llm(question_text: str, k: int) -> list[str]:
 
-    system_prompt = (
-        f"Generate {k} paraphrased queries for the following question. "
-        f"Respond strictly in JSON as a list of {k} strings. "
-        f"Do not include any text before or after the JSON."
+def _normalize_to_k(items: List[str], k: int) -> List[str]:
+    cleaned = [s.strip() for s in items if isinstance(s, str) and s.strip()]
+    if len(cleaned) >= k:
+        return cleaned[:k]
+    return cleaned + [cleaned[-1] if cleaned else ""] * (k - len(cleaned))
+
+
+def query_llm(question_text: str, k: int) -> List[str]:
+    """Return exactly k rewritten queries via LangChain with robust parsing."""
+    model = _build_model()
+
+    template = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                (
+                    "You rewrite search queries. Return strictly JSON: a list of "
+                    "exactly {k} unique, concise paraphrases. Do not include any "
+                    "explanation or keys, only the JSON array."
+                ),
+            ),
+            ("user", "Original question: {question}"),
+        ]
     )
-    user_prompt = f"Question: {question_text}\nAfree -hnswer:"
 
-    chain_answer = llm_instance.get_llama_completion(system_prompt, user_prompt)
-    if not chain_answer:
-        return None
+    parser = JsonOutputParser()
+    chain = template | model | parser
 
     try:
-        queries = json.loads(chain_answer)
-        if not isinstance(queries, list):
-            raise ValueError("Output is not a list")
-        queries = [q.strip() for q in queries if isinstance(q, str) and q.strip()]
-    except (json.JSONDecodeError, ValueError):
-        print("Warning: Model output not valid JSON. Falling back to line parsing.")
-        lines = [q.strip() for q in chain_answer.split('\n') if q.strip()]
-        queries = [re.sub(r'^\d+[\).\s-]*', '', q).strip() for q in lines]
+        output = chain.invoke({"k": k, "question": question_text})
+        # parser returns Python object already
+        if not isinstance(output, list):
+            # In rare cases models wrap with an object – try to coerce
+            if isinstance(output, dict):
+                # attempt common keys
+                for key in ("queries", "paraphrases", "results", "items"):
+                    if key in output and isinstance(output[key], list):
+                        output = output[key]
+                        break
+        if not isinstance(output, list):
+            raise ValueError("Parsed output is not a list")
+        result = _normalize_to_k([str(x) for x in output], k)
+    except Exception as e:
+        # Last resort: try to load as JSON text or fallback to identity
+        try:
+            loaded = json.loads(str(e))
+            if isinstance(loaded, list):
+                result = _normalize_to_k([str(x) for x in loaded], k)
+            else:
+                result = _normalize_to_k([question_text], k)
+        except Exception:
+            result = _normalize_to_k([question_text], k)
 
-    if len(queries) != k:
-        print(f"Warning: Expected {k} queries, got {len(queries)}. Adjusting...")
-        if len(queries) > k:
-            queries = queries[:k]
-        else:
-            queries += [""] * (k - len(queries))
-
-    return queries
+    return result
 
 
 if __name__ == "__main__":
-    question = "What are the health benefits of regular exercise?"
+    example_q = "What are the health benefits of regular exercise?"
     k = 5
-    paraphrased_queries = query_llm(question, k)
-    print(paraphrased_queries)
+    print(query_llm(example_q, k))
