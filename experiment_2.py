@@ -4,8 +4,9 @@ from datetime import datetime
 
 from pyterrier_t5 import MonoT5ReRanker
 
+import constants
 from code_base.wiki_loader_pyt import wiki_loader_pyt
-from code_base.llm_q import query_llm
+from code_base.llm_q import rewrite_single_query
 
 
 if not pt.started():
@@ -13,25 +14,21 @@ if not pt.started():
 
 
 # -----------------------------
-# Configuration
+# Configuration (from constants.py)
 # -----------------------------
-DATA_PATH = (
-    "/mnt/c/Users/prath/Documents/Uni(Tudelft)/MSc/" "MasterThesis/data/2wikimultihopQA"
-)
-DATA_SPLIT = "test"
-
-# Terrier index metadata file
-INDEX_PATH = "./index/wiki_musique_index/data.properties"
+DATA_PATH = constants.DATA_PATH
+DATA_SPLIT = constants.DATA_SPLIT
+INDEX_PATH = constants.INDEX_PATH
 
 # Experiment controls
-TOPIC_LIMIT = 1000
-N_REWRITES = 4  # number of rewritten queries per original query
-RETRIEVAL_CUTOFF = 200  # docs per query (or per expanded query)
-RECALL_C = 100  # additional recall@c metric; c is configurable
+TOPIC_LIMIT = constants.EXPERIMENT_2_TOPIC_LIMIT
+N_REWRITES = constants.EXPERIMENT_2_N_REWRITES
+RETRIEVAL_CUTOFF = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
+RECALL_C = constants.EXPERIMENT_2_RECALL_C
 
 # Reranker
-T5_BATCH_SIZE = 16
-EXPERIMENT_BATCH_SIZE = 20
+T5_BATCH_SIZE = constants.T5_BATCH_SIZE
+EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
 
 
 # -----------------------------
@@ -58,8 +55,16 @@ mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 # Transformers
 # -----------------------------
 class QueryRewriteTransformer(pt.Transformer):
-    def __init__(self, n: int):
+    """
+    Transformer that reads preprocessed query rewrites from dataset file.
+    Uses rewrite_single_query to get k rewrites for each query ID.
+    """
+
+    def __init__(self, n: int, dataset_name: str = None):
         self.n = n
+        self.dataset_name = (
+            dataset_name if dataset_name is not None else constants.DATASET_NAME
+        )
 
     def transform(self, topics_like: pd.DataFrame) -> pd.DataFrame:
         # Expect columns: ['qid', 'query']
@@ -68,8 +73,13 @@ class QueryRewriteTransformer(pt.Transformer):
             qid = row["qid"]
             query = row["query"]
             try:
-                rewrites = query_llm(query, self.n)
-            except Exception:
+                # Read preprocessed rewrites from dataset file
+                rewrites = rewrite_single_query(self.dataset_name, qid, self.n)
+            except (ValueError, FileNotFoundError, KeyError) as e:
+                # Fallback to original query if rewrite not found
+                print(
+                    f"Warning: Could not load rewrites for qid {qid}: {e}. Using original query."
+                )
                 rewrites = [query] * self.n
             for rw in rewrites:
                 out_rows.append({"qid": qid, "query": rw})
@@ -93,7 +103,7 @@ class DedupAndCutoff(pt.Transformer):
 # -----------------------------
 # Pipelines
 # -----------------------------
-rewrite = QueryRewriteTransformer(N_REWRITES)
+rewrite = QueryRewriteTransformer(N_REWRITES, dataset_name=constants.DATASET_NAME)
 dedup_topk = DedupAndCutoff(RETRIEVAL_CUTOFF)
 
 # Baseline BM25 on original queries
@@ -112,7 +122,7 @@ expanded_pipeline = (
 # -----------------------------
 # Experiment
 # -----------------------------
-eval_metrics = ["R@10", f"R@{RECALL_C}", "nDCG@10"]
+eval_metrics = constants.EXPERIMENT_2_EVAL_METRICS
 
 print("Running experiment with query rewriting pipeline...")
 results = pt.Experiment(
