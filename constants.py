@@ -4,7 +4,7 @@ Modify values here to reconfigure experiments without changing code.
 """
 
 import numpy as np
-
+from pyterrier.measures import R, nDCG
 # ==================== Data Configuration ====================
 DATA_PATH = (
     "/mnt/c/Users/prath/Documents/Uni(Tudelft)/MSc/" "MasterThesis/data/2wikimultihopQA"
@@ -31,10 +31,10 @@ EXPERIMENT_1_C_VALUES = [int(i) for i in np.linspace(10, 100, 4, dtype=int)]
 EXPERIMENT_2_TOPIC_LIMIT = 20
 
 # Number of rewritten queries per original query
-EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 10, 2, dtype=int)]
+EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 6, dtype=int)]
 
 # Docs per query (or per expanded query)
-EXPERIMENT_2_RETRIEVAL_CUTOFF = 200
+EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
 
 # Defines the range of 'c' to experiment with
 # List or single int

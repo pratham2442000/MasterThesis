@@ -75,7 +75,7 @@ def plot_metrics(
     markers = ["o", "x", "s", "^", "D", "v", "*", "+"]
     for i, (metric_col, label) in enumerate(zip(metric_cols, labels)):
         marker = markers[i % len(markers)]
-        plt.plot(df[x_col], np.round(df[metric_col], 3), marker=marker, label=label)
+        plt.plot(df[x_col], np.round(df[metric_col], 3), marker=marker, label=label, alpha=0.7)
 
     plt.title(title)
     plt.xlabel(xlabel)
@@ -300,7 +300,7 @@ def collect_experiment_metadata(
                 "topic_limit": constants.EXPERIMENT_2_TOPIC_LIMIT,
                 "n_rewrites": constants.EXPERIMENT_2_N_REWRITES,
                 "retrieval_cutoff": constants.EXPERIMENT_2_RETRIEVAL_CUTOFF,
-                "recall_c": constants.EXPERIMENT_2_RECALL_C,
+                "recall_c": constants.EXPERIMENT_1_C_VALUES,
                 "t5_batch_size": constants.T5_BATCH_SIZE,
                 "experiment_batch_size": constants.EXPERIMENT_BATCH_SIZE,
                 "eval_metrics": constants.EXPERIMENT_2_EVAL_METRICS,
@@ -398,8 +398,7 @@ def load_experiment_metadata(metadata_path: str) -> Dict[str, Any]:
 def find_experiment_files(
         experiment_name: str,
         output_dir: Optional[str] = None,
-        latest: bool = True,
-) -> Dict[str, str]:
+        latest: bool = True, ):
     """
     Finds CSV and metadata files for an experiment.
 
@@ -429,7 +428,7 @@ def find_experiment_files(
     metadata_files = glob.glob(metadata_pattern)
 
     if not csv_files:
-        return None
+        raise FileNotFoundError("No CSV files found for the experiment.")
 
     if latest:
         # Sort by modification time and return latest
