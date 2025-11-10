@@ -1,44 +1,45 @@
-import pyterrier as pt
+import os
+
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.stats import linregress
-
-if not pt.started():
-    pt.init()
-
+import pyterrier as pt
+from pyterrier.measures import R
 from pyterrier_t5 import MonoT5ReRanker
-from pyterrier.measures import R, NDCG
 
 import constants
+from code_base.experiment_utils import (
+    plot_metrics,
+    plot_with_regression,
+    save_experiment_results,
+    preprocess_query
+)
 from code_base.wiki_loader_pyt import wiki_loader_pyt
-
 
 # -----------------------------
 # Configuration (from constants.py)
 # -----------------------------
 DATA_PATH = constants.DATA_PATH
+RESULTS_PATH = DATA_PATH + "/experiment_results/experiment_1"
+
+if os.path.exists(RESULTS_PATH):
+    print(f"Results directory {RESULTS_PATH} already exists.")
+else:
+    os.makedirs(RESULTS_PATH)
+    print(f"Created results directory at {RESULTS_PATH}.")
+
 DATA_SPLIT = constants.DATA_SPLIT
 INDEX_PATH = constants.INDEX_PATH
 
 # Experiment Configuration
 TOPIC_LIMIT = constants.EXPERIMENT_1_TOPIC_LIMIT
 C_VALUES = constants.EXPERIMENT_1_C_VALUES
+if type(C_VALUES) is int:
+    C_VALUES = [C_VALUES]
 T5_BATCH_SIZE = constants.T5_BATCH_SIZE
 EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
-EVAL_METRICS = [R @ 10, NDCG @ 10]
-
-
+EVAL_METRICS = constants.EXPERIMENT_1_EVAL_METRICS
 
 print("Loading data...")
 docs_df, topics_df, qrels_df = wiki_loader_pyt(DATA_PATH, DATA_SPLIT)
-
-
-def preprocess_query(query):
-    """Simple query cleaning: remove punctuation/special chars and lowercases."""
-    query = "".join(e for e in query if e.isalnum() or e.isspace())
-    return query.lower()
-
 
 topics_df["query"] = topics_df["query"].apply(preprocess_query)
 
@@ -47,14 +48,16 @@ index_ref = pt.IndexFactory.of(INDEX_PATH)
 
 mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
+results = {}
+results["c"] = C_VALUES
+for i in EVAL_METRICS:
+    results["BM25_" + str(i)] = []
+    results["Pipeline_" + str(i)] = []
 
-results = {
-    "c": C_VALUES,
-    "BM25_R@10": [],
-    "Pipeline_R@10": [],
-    "BM25_NDCG@10": [],
-    "Pipeline_NDCG@10": [],
-}
+results["BM25_R@c"] = []
+results["Pipeline_R@c"] = []
+
+
 
 print(f"\nStarting experiment for initial cutoff (c) in: {C_VALUES}")
 
@@ -68,156 +71,90 @@ for c in C_VALUES:
         [bm25_retrieved, pipeline],
         topics,
         qrels_df,
-        eval_metrics=EVAL_METRICS,
-        names=["BM25", "BM25+MonoT5"],
+        eval_metrics=EVAL_METRICS + [R @ c],
+        names=["BM25", "Pipeline"],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
     )
 
     results["BM25_R@10"].append(float(experiment_results["R@10"][0]))
     results["Pipeline_R@10"].append(float(experiment_results["R@10"][1]))
-    results["BM25_NDCG@10"].append(float(experiment_results["nDCG@10"][0]))
-    results["Pipeline_NDCG@10"].append(float(experiment_results["nDCG@10"][1]))
+    results["BM25_nDCG@10"].append(float(experiment_results["nDCG@10"][0]))
+    results["Pipeline_nDCG@10"].append(float(experiment_results["nDCG@10"][1]))
+    results["BM25_R@c"].append(float(experiment_results[f"R@{c}"][0]))
+    results["Pipeline_R@c"].append(float(experiment_results[f"R@{c}"][1]))
+
+    bm25_r10 = results["BM25_R@10"][-1]
+    pipe_r10 = results["Pipeline_R@10"][-1]
+    bm25_ndcg = results["BM25_nDCG@10"][-1]
+    pipe_ndcg = results["Pipeline_nDCG@10"][-1]
+    bm25_rc = results["BM25_R@c"][-1]
+    pipe_rc = results["Pipeline_R@c"][-1]
 
     print(
-        f"c={c}: BM25 R@10={results['BM25_R@10'][-1]:.4f}, Pipeline R@10={results['Pipeline_R@10'][-1]:.4f} | BM25 NDCG@10={results['BM25_NDCG@10'][-1]:.4f}, Pipeline NDCG@10={results['Pipeline_NDCG@10'][-1]:.4f}"
+        f"c={c}: BM25 R@10={bm25_r10:.4f}, "
+        f"Pipeline R@10={pipe_r10:.4f}, "
+        f"BM25 NDCG@10={bm25_ndcg:.4f}, "
+        f"Pipeline NDCG@10={pipe_ndcg:.4f}, "
+        f"BM25 R@{c}={bm25_rc:.4f}, "
+        f"Pipeline R@{c}={pipe_rc:.4f}"
     )
 
 results_df = pd.DataFrame(results)
-results_df.to_csv(DATA_PATH + "/experiment_1_results.csv", index=False)
+
+# Save results with metadata
+save_experiment_results(
+    results_df,
+    experiment_name="experiment_1",
+    output_dir=RESULTS_PATH,
+    filename="experiment_1_results",
+)
+
 print("\nFinal Results DataFrame:")
 print(results_df)
 
+# CHART GENERATION
 
-## CHART GENERATION
-
-
-def plot_metrics(df, metric_suffix, title, ylabel, filename):
-    """Generates and saves a plot for a given metric."""
-    plt.figure(figsize=(10, 6))
-    metric_bm25 = f"BM25_{metric_suffix}"
-    metric_pipeline = f"Pipeline_{metric_suffix}"
-
-    plt.plot(df["c"], df[metric_bm25], marker="o", label="BM25 Baseline")
-    plt.plot(df["c"], df[metric_pipeline], marker="x", label="BM25 + MonoT5 Re-ranker")
-
-    plt.title(title)
-    plt.xlabel("Initial Cutoff (c) for BM25 Retrieval")
-    plt.ylabel(ylabel)
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.legend()
-
-    # Use log scale for x-axis if there is a wide range of C_VALUES
-    if len(df["c"]) > 2 and (df["c"].max() / df["c"].min() > 5):
-        plt.xscale("log")
-        plt.xticks(df["c"], labels=[str(v) for v in df["c"]])
-
-    plt.tight_layout()
-    plt.savefig(DATA_PATH + filename)
-    print(f"Chart saved as {DATA_PATH+filename}")
-
-
-# R@10 vs. Cutoff
+# R vs. Cutoff
 plot_metrics(
     results_df,
-    "R@10",
-    "Effect of Initial Cutoff (c) on Recall (R@10)",
-    "Recall (R@10)",
-    "/cutoff_vs_R_at_10.png",
+    x_col="c",
+    metric_cols=["BM25_R@10", "Pipeline_R@10", "BM25_R@c", "Pipeline_R@c"],
+    labels=["BM25 Baseline", "BM25 + MonoT5 Re-ranker"],
+    title="Effect of Initial Cutoff (c) on Recall (R@10 and R@c)",
+    xlabel="Initial Cutoff (c) for BM25 Retrieval",
+    filename="/cutoff_vs_R.png",
+    output_dir=RESULTS_PATH,
+    use_log_scale=False
 )
-
 
 # NDCG@10 vs. Cutoff
 plot_metrics(
     results_df,
-    "NDCG@10",
-    "Effect of Initial Cutoff (c) on NDCG@10",
-    "NDCG@10 (Discounted Cumulative Gain)",
-    "/cutoff_vs_NDCG_at_10.png",
+    x_col="c",
+    metric_cols=["BM25_nDCG@10", "Pipeline_nDCG@10"],
+    labels=["BM25 Baseline", "BM25 + MonoT5 Re-ranker"],
+    title="Effect of Initial Cutoff (c) on NDCG@10",
+    xlabel="Initial Cutoff (c) for BM25 Retrieval",
+    ylabel="NDCG@10 (Discounted Cumulative Gain)",
+    filename="/cutoff_vs_NDCG_at_10.png",
+    output_dir=RESULTS_PATH,
+    use_log_scale=False
 )
 
-
-## LINEAR REGRESSION ANALYSIS (R@10)
-
+# LINEAR REGRESSION ANALYSIS (R@10)
 
 print("\n--- Linear Regression Analysis (log(c) vs R@10) ---")
 
-# Use log(c) for regression as is common in IR analysis
-log_c = np.log(results_df["c"])
-
-
-def run_regression(x, y, label):
-    """Performs and prints linear regression results."""
-    # Perform linear regression: R@10 = slope * log(c) + intercept
-    slope, intercept, r_value, p_value, std_err = linregress(x, y)
-    r_squared = r_value**2
-
-    print(f"\n{label}:")
-    print(f"  Equation: R@10 = {slope:.4f} * log(c) + {intercept:.4f}")
-    print(f"  R-squared: {r_squared:.4f}")
-    print(f"  P-value: {p_value:.4g}")  # Lower p-value indicates stronger significance
-
-    return slope, intercept
-
-
-# Regression for BM25 R@10
-slope_bm25, intercept_bm25 = run_regression(
-    log_c, results_df["BM25_R@10"], "BM25 (Baseline) R@10"
+plot_with_regression(
+    results_df,
+    x_col="c",
+    metric_cols=["BM25_R@10", "Pipeline_R@10", "BM25_R@c", "Pipeline_R@c"],
+    labels=["BM25 (Baseline) R@10", "Pipeline (BM25+MonoT5) R@10"],
+    use_log_scale=False,
+    title="R (@ 10, c) vs. Initial Cutoff (c) with Log(c) Linear Regression",
+    xlabel="Initial Cutoff (c) for BM25 Retrieval (log scale)",
+    ylabel="Recall (R@10 and R@c)",
+    filename="/cutoff_R_at_10_log_regression.png",
+    output_dir=RESULTS_PATH,
 )
-
-# Regression for Pipeline R@10
-slope_pipeline, intercept_pipeline = run_regression(
-    log_c, results_df["Pipeline_R@10"], "Pipeline (BM25+MonoT5) R@10"
-)
-
-# Plot with Regression Lines (R@10)
-plt.figure(figsize=(10, 6))
-
-# Plot measured data points
-plt.plot(
-    results_df["c"],
-    results_df["BM25_R@10"],
-    marker="o",
-    linestyle="",
-    label="BM25 R@10 (Measured)",
-)
-plt.plot(
-    results_df["c"],
-    results_df["Pipeline_R@10"],
-    marker="x",
-    linestyle="",
-    label="Pipeline R@10 (Measured)",
-)
-
-# Plot regression lines
-c_values_for_plot = np.logspace(
-    np.log10(results_df["c"].min()), np.log10(results_df["c"].max()), 50
-)
-log_c_for_plot = np.log(c_values_for_plot)
-
-plt.plot(
-    c_values_for_plot,
-    intercept_bm25 + slope_bm25 * log_c_for_plot,
-    color="blue",
-    linestyle="--",
-    alpha=0.7,
-    label="BM25 Regression Line",
-)
-plt.plot(
-    c_values_for_plot,
-    intercept_pipeline + slope_pipeline * log_c_for_plot,
-    color="red",
-    linestyle="--",
-    alpha=0.7,
-    label="Pipeline Regression Line",
-)
-
-plt.title("R@10 vs. Initial Cutoff (c) with Log(c) Linear Regression")
-plt.xlabel("Initial Cutoff (c) for BM25 Retrieval (log scale)")
-plt.ylabel("Recall (R@10)")
-plt.grid(True, linestyle="--", alpha=0.6)
-plt.legend()
-plt.xscale("log")
-plt.xticks(results_df["c"], labels=[str(v) for v in results_df["c"]])
-plt.tight_layout()
-plt.savefig( DATA_PATH +"cutoff_R_at_10_log_regression.png")

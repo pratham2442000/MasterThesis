@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import sys
@@ -188,6 +189,30 @@ def preprep_dataset(name: str, questions, split=None, path_dt=None, live: bool =
     all_rewritten = []
     n_rewrites = constants.LLM_REWRITES_PER_QUERY
 
+    filename = f"{name}_rewritten_queries_dataset_{n_rewrites}_{split}.csv"
+
+    if os.path.exists(os.path.join(path_dt, filename)):
+        print(
+            f"Rewritten queries dataset already exists at {os.path.join(path_dt, filename)}. "
+            "Loading existing dataset and skipping q_ids that are already present."
+        )
+
+        existing_df = pd.read_csv(os.path.join(path_dt, filename))
+        existing_q_ids = set(existing_df["q_id"].values)
+        questions = [
+            (q, q_id) for q, q_id in questions if q_id not in existing_q_ids
+        ]
+        all_rewritten.extend(
+            zip(
+                existing_df["q_id"].values,
+                existing_df["rewritten_queries"].apply(lambda x: ast.literal_eval(x)),
+            )
+        )
+
+    if not questions:
+        print("No new questions to process. Returning existing dataset.")
+        return pd.DataFrame(all_rewritten, columns=["q_id", "rewritten_queries"])
+
     for question, q_id in tqdm(questions, desc="Rewriting queries"):
         rewritten = _query_llm(
             question, n_rewrites, live=live, request_permission=False
@@ -197,7 +222,7 @@ def preprep_dataset(name: str, questions, split=None, path_dt=None, live: bool =
     # Save to dataframe
     columns = ["q_id", "rewritten_queries"]
     df = pd.DataFrame(all_rewritten, columns=columns)
-    filename = f"{name}_rewritten_queries_dataset_{n_rewrites}_{split}.csv"
+
     filepath = os.path.join(path_dt, filename)
     print(f"Saving rewritten queries to CSV: {filepath}")
     df.to_csv(filepath, index=False)
@@ -205,7 +230,7 @@ def preprep_dataset(name: str, questions, split=None, path_dt=None, live: bool =
 
 
 def rewrite_single_query(
-    name, q_id: int, k: int, split=None, path_dt=None
+        name, q_id: str, k: int, split=None, path_dt=None
 ) -> List[str]:
     """
     Rewrite a single query to get k rewritten queries from preprocessed dataset.
@@ -234,8 +259,7 @@ def rewrite_single_query(
     if q_id not in df["q_id"].values:
         raise ValueError(f"q_id {q_id} not found in the dataset.")
 
-    rewritten = df[df["q_id"] == q_id]["rewritten_queries"].values[0]
-    rewritten = json.loads(rewritten.replace("'", '"'))
+    rewritten = df[df["q_id"] == q_id]["rewritten_queries"].apply(lambda x: ast.literal_eval(x)).values[0]
     rewritten = _normalize_to_k(rewritten, k)
     return rewritten
 
