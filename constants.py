@@ -5,6 +5,7 @@ Modify values here to reconfigure experiments without changing code.
 
 import numpy as np
 from pyterrier.measures import R, nDCG
+
 # ==================== Data Configuration ====================
 DATA_PATH = (
     "/mnt/c/Users/prath/Documents/Uni(Tudelft)/MSc/" "MasterThesis/data/2wikimultihopQA"
@@ -28,10 +29,10 @@ EXPERIMENT_1_C_VALUES = [int(i) for i in np.linspace(10, 100, 4, dtype=int)]
 # ==================== Experiment 2 Configuration ====================
 # Limits the number of topics (queries) used for experiment 2
 # default 1000
-EXPERIMENT_2_TOPIC_LIMIT = 20
+EXPERIMENT_2_TOPIC_LIMIT = 500
 
 # Number of rewritten queries per original query
-EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 6, dtype=int)]
+EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 15, dtype=int)]
 
 # Docs per query (or per expanded query)
 EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
@@ -39,6 +40,22 @@ EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
 # Defines the range of 'c' to experiment with
 # List or single int
 EXPERIMENT_2_C_VALUES = [int(i) for i in np.linspace(10, 100, 2, dtype=int)]
+
+# ==================== Experiment 3 Configuration ====================
+# Limits the number of topics (queries) used for experiment 3
+# default 1000
+EXPERIMENT_3_TOPIC_LIMIT = 500
+
+# Number of rewritten queries per original query
+EXPERIMENT_3_N_REWRITES = [int(i) for i in np.linspace(1, 30, 15, dtype=int)]
+
+# Docs per query (or per expanded query)
+EXPERIMENT_3_RETRIEVAL_CUTOFF = 20
+
+# Hybrid pipeline parameters
+EXPERIMENT_3_HYBRID_CROSS_ENC_BUDGET = 7  # Number of cross-encoder calls
+EXPERIMENT_3_HYBRID_TOP_S = 30  # Top s docs to calculate set affinity
+EXPERIMENT_3_HYBRID_LK = 16  # Value of k for selecting k neighbourhood graph
 
 # ==================== Reranker Configuration ====================
 T5_BATCH_SIZE = 16
@@ -63,3 +80,6 @@ EXPERIMENT_1_EVAL_METRICS = [R @ 10, nDCG @ 10]
 
 # Experiment 2 metrics
 EXPERIMENT_2_EVAL_METRICS = [R @ 10, nDCG @ 10]
+
+# Experiment 3 metrics
+EXPERIMENT_3_EVAL_METRICS = [R @ 10, nDCG @ 10]
