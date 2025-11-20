@@ -39,7 +39,7 @@ EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
 EVAL_METRICS = constants.EXPERIMENT_1_EVAL_METRICS
 
 print("Loading data...")
-docs_df, topics_df, qrels_df = wiki_loader_pyt(DATA_PATH, DATA_SPLIT)
+docs_df, topics_df, qrels_df = wiki_loader_pyt(DATA_PATH, DATA_SPLIT)  # TODO change to dateset factory
 
 topics_df["query"] = topics_df["query"].apply(preprocess_query)
 
@@ -125,7 +125,7 @@ plot_metrics(
     xlabel="Initial Cutoff (c) for BM25 Retrieval",
     filename="/cutoff_vs_R.png",
     output_dir=RESULTS_PATH,
-    use_log_scale=False
+    use_log_scale=True
 )
 
 # NDCG@10 vs. Cutoff
@@ -139,7 +139,7 @@ plot_metrics(
     ylabel="NDCG@10 (Discounted Cumulative Gain)",
     filename="/cutoff_vs_NDCG_at_10.png",
     output_dir=RESULTS_PATH,
-    use_log_scale=False
+    use_log_scale=True
 )
 
 # LINEAR REGRESSION ANALYSIS (R@10)
@@ -151,7 +151,7 @@ plot_with_regression(
     x_col="c",
     metric_cols=["BM25_R@10", "Pipeline_R@10", "BM25_R@c", "Pipeline_R@c"],
     labels=["BM25 (Baseline) R@10", "Pipeline (BM25+MonoT5) R@10"],
-    use_log_scale=False,
+    use_log_scale=True,
     title="R (@ 10, c) vs. Initial Cutoff (c) with Log(c) Linear Regression",
     xlabel="Initial Cutoff (c) for BM25 Retrieval (log scale)",
     ylabel="Recall (R@10 and R@c)",

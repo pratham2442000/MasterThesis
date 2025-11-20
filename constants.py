@@ -19,12 +19,12 @@ INDEX_PATH = "./index/wiki_musique_index/data.properties"
 # ==================== Experiment 1 Configuration ====================
 # Limits the number of topics (queries) used for experiment 1
 # default 1000
-EXPERIMENT_1_TOPIC_LIMIT = 100
+EXPERIMENT_1_TOPIC_LIMIT = 500
 
 # Initial Cutoff Values (c) for BM25 Retrieval in experiment 1
 # Defines the range of 'c' to experiment with
 # List or single int
-EXPERIMENT_1_C_VALUES = [int(i) for i in np.linspace(10, 100, 4, dtype=int)]
+EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=5, dtype=int)]
 
 # ==================== Experiment 2 Configuration ====================
 # Limits the number of topics (queries) used for experiment 2

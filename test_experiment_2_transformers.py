@@ -2,7 +2,6 @@
 Test file for Experiment 2 transformers.
 Tests document counts at each stage of the pipeline for different methods.
 """
-
 import numpy as np
 import pandas as pd
 import pyterrier as pt
@@ -95,7 +94,7 @@ print("=" * 60 + "\n")
 
 # Test 1: Dedup Method (Original)
 print("--- Test 1: Dedup Method ---")
-rewrite = QueryRewriteTransformer(n=5).transform(topics_df[:1])
+rewrite = QueryRewriteTransformer(n=5).transform(topics_df[:2])
 print(f"Number of rewrites: {len(rewrite)}")
 bm25_results = (bm25 % RETRIEVAL_CUTOFF).transform(rewrite)
 print(f"After BM25 % {RETRIEVAL_CUTOFF}: {len(bm25_results)}")
