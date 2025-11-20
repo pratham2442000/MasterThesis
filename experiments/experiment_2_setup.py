@@ -7,6 +7,12 @@ of rewritten queries. This must be run before experiment_2.py.
 The dataset will be saved to a CSV file that experiment_2.py will read from.
 """
 
+import os
+import sys
+
+# Add parent directory to path to allow importing constants and code_base
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import constants
 from code_base.dataset_factory import get_dataset
 from code_base.llm_q import preprep_dataset

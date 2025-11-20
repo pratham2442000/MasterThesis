@@ -2,6 +2,12 @@
 Test file for Experiment 2 transformers.
 Tests document counts at each stage of the pipeline for different methods.
 """
+import os
+import sys
+
+# Add parent directory to path to allow importing constants and code_base
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import numpy as np
 import pandas as pd
 import pyterrier as pt

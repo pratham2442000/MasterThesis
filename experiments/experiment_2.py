@@ -1,4 +1,8 @@
 import os
+import sys
+
+# Add parent directory to path to allow importing constants and code_base
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import numpy as np
 import pandas as pd
@@ -39,18 +43,15 @@ EVAL_METRICS = constants.EXPERIMENT_2_EVAL_METRICS
 C_VALUES = constants.EXPERIMENT_2_C_VALUES
 RETRIEVAL_CUTOFF = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
 
-
 # Reranker
 T5_BATCH_SIZE = constants.T5_BATCH_SIZE
 EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
-
 
 # -----------------------------
 # Data
 # -----------------------------
 print("Loading data...")
 docs_df, topics_df, qrels_df = wiki_loader_pyt(DATA_PATH, DATA_SPLIT)  # TODO change to dateset fatory
-
 
 topics_df["query"] = topics_df["query"].apply(preprocess_query)
 topics = topics_df[:TOPIC_LIMIT]

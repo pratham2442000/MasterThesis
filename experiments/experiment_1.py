@@ -1,4 +1,8 @@
 import os
+import sys
+
+# Add parent directory to path to allow importing constants and code_base
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import pandas as pd
 import pyterrier as pt
@@ -57,10 +61,7 @@ for i in EVAL_METRICS:
 results["BM25_R@c"] = []
 results["Pipeline_R@c"] = []
 
-
-
 print(f"\nStarting experiment for initial cutoff (c) in: {C_VALUES}")
-
 
 for c in C_VALUES:
     bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
