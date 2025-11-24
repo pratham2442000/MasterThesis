@@ -11,6 +11,7 @@ from pyterrier.measures import R
 from pyterrier_t5 import MonoT5ReRanker
 
 import constants
+from code_base import dataset_factory
 from code_base.experiment_utils import (
     plot_metrics,
     save_experiment_results,
@@ -19,7 +20,6 @@ from code_base.experiment_utils import (
 )
 from code_base.llm_q import rewrite_single_query
 from code_base.query_trasnformers import Dedup, DedupAndCutoff, BordaVotingTransformerV2
-from code_base.wiki_loader_pyt import wiki_loader_pyt
 
 # -----------------------------
 # Configuration (from constants.py)
@@ -51,7 +51,7 @@ EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
 # Data
 # -----------------------------
 print("Loading data...")
-docs_df, topics_df, qrels_df = wiki_loader_pyt(DATA_PATH, DATA_SPLIT)  # TODO change to dateset fatory
+docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, DATA_SPLIT)
 
 topics_df["query"] = topics_df["query"].apply(preprocess_query)
 topics = topics_df[:TOPIC_LIMIT]

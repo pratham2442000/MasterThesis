@@ -10,13 +10,13 @@ from pyterrier.measures import R
 from pyterrier_t5 import MonoT5ReRanker
 
 import constants
+from code_base import dataset_factory
 from code_base.experiment_utils import (
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
     preprocess_query
 )
-from code_base.wiki_loader_pyt import wiki_loader_pyt
 
 # -----------------------------
 # Configuration (from constants.py)
@@ -43,7 +43,7 @@ EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
 EVAL_METRICS = constants.EXPERIMENT_1_EVAL_METRICS
 
 print("Loading data...")
-docs_df, topics_df, qrels_df = wiki_loader_pyt(DATA_PATH, DATA_SPLIT)  # TODO change to dateset factory
+docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, DATA_SPLIT)
 
 topics_df["query"] = topics_df["query"].apply(preprocess_query)
 
