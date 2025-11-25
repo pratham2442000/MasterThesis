@@ -76,10 +76,10 @@ REQUIRE_API_PERMISSION = True
 
 # ==================== Evaluation Metrics ====================
 # Experiment 1 metrics
-EXPERIMENT_1_EVAL_METRICS = [R @ 10, nDCG @ 10]
+EXPERIMENT_1_EVAL_METRICS = [R@10, nDCG@10]
 
 # Experiment 2 metrics
-EXPERIMENT_2_EVAL_METRICS = [R @ 10, nDCG @ 10]
+EXPERIMENT_2_EVAL_METRICS = [R@10, nDCG@10]
 
 # Experiment 3 metrics
-EXPERIMENT_3_EVAL_METRICS = [R @ 10, nDCG @ 10]
+EXPERIMENT_3_EVAL_METRICS = [R@10, nDCG@10]
