@@ -29,7 +29,7 @@ EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=5, dtype=int
 # ==================== Experiment 2 Configuration ====================
 # Limits the number of topics (queries) used for experiment 2
 # default 1000
-EXPERIMENT_2_TOPIC_LIMIT = 600
+EXPERIMENT_2_TOPIC_LIMIT = 500
 
 # Number of rewritten queries per original query
 EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 15, dtype=int)]

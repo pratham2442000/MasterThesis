@@ -252,7 +252,7 @@ for N in N_REWRITES:
         eval_metrics=EVAL_METRICS + [R @ RETRIEVAL_CUTOFF],
         names=[
             "BM25",
-            "BM25+MonoT5"
+            "BM25+MonoT5",
             "Pipeline_Dedup",
             "Pipeline_DedupCutoff",
             "Pipeline_Borda",
@@ -263,37 +263,37 @@ for N in N_REWRITES:
     )
 
     # Store results for all methods
-    results["BM25_R@10"].append(float(experiment_results["R@10"][0]))
-    results["BM25_MonoT5_R@10"].append(float(experiment_results["MonoT5@10"][1]))
-    results["Pipeline_Dedup_R@10"].append(float(experiment_results["R@10"][2]))
-    results["Pipeline_DedupCutoff_R@10"].append(float(experiment_results["R@10"][3]))
-    results["Pipeline_Borda_R@10"].append(float(experiment_results["R@10"][4]))
-    results["Pipeline_BordaWeighted_R@10"].append(float(experiment_results["R@10"][5]))
+    results["BM25_R@10"].append(float(experiment_results["R@10"].iloc[0]))
+    results["BM25_MonoT5_R@10"].append(float(experiment_results["R@10"].iloc[1]))
+    results["Pipeline_Dedup_R@10"].append(float(experiment_results["R@10"].iloc[2]))
+    results["Pipeline_DedupCutoff_R@10"].append(float(experiment_results["R@10"].iloc[3]))
+    results["Pipeline_Borda_R@10"].append(float(experiment_results["R@10"].iloc[4]))
+    results["Pipeline_BordaWeighted_R@10"].append(float(experiment_results["R@10"].iloc[5]))
 
-    results["BM25_nDCG@10"].append(float(experiment_results["nDCG@10"][0]))
-    results["BM25_MonoT5_nDCG@10"].append(float(experiment_results["nDCG@10"][1]))
-    results["Pipeline_Dedup_nDCG@10"].append(float(experiment_results["nDCG@10"][2]))
+    results["BM25_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[0]))
+    results["BM25_MonoT5_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[1]))
+    results["Pipeline_Dedup_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[2]))
     results["Pipeline_DedupCutoff_nDCG@10"].append(
-        float(experiment_results["nDCG@10"][3])
+        float(experiment_results["nDCG@10"].iloc[3])
     )
-    results["Pipeline_Borda_nDCG@10"].append(float(experiment_results["nDCG@10"][4]))
+    results["Pipeline_Borda_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[4]))
     results["Pipeline_BordaWeighted_nDCG@10"].append(
-        float(experiment_results["nDCG@10"][5])
+        float(experiment_results["nDCG@10"].iloc[5])
     )
 
-    results["BM25_R@c"].append(float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"][0]))
-    results["BM25_MonoT5_R@c"].append(float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"][1]))
+    results["BM25_R@c"].append(float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[0]))
+    results["BM25_MonoT5_R@c"].append(float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[1]))
     results["Pipeline_Dedup_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"][2])
+        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[2])
     )
     results["Pipeline_DedupCutoff_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"][3])
+        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[3])
     )
     results["Pipeline_Borda_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"][4])
+        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[4])
     )
     results["Pipeline_BordaWeighted_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"][5])
+        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[5])
     )
 
     bm25_r10 = results["BM25_R@10"][-1]
@@ -304,7 +304,7 @@ for N in N_REWRITES:
     borda_w_r10 = results["Pipeline_BordaWeighted_R@10"][-1]
 
     bm25_ndcg = results["BM25_nDCG@10"][-1]
-    bm25_monot5_ndcg = results["BM25_monot5_nDCG@10"][-1]
+    bm25_monot5_ndcg = results["BM25_MonoT5_nDCG@10"][-1]
     dedup_ndcg = results["Pipeline_Dedup_nDCG@10"][-1]
     dedupCutoff_ndcg = results["Pipeline_DedupCutoff_nDCG@10"][-1]
     borda_ndcg = results["Pipeline_Borda_nDCG@10"][-1]
@@ -350,7 +350,7 @@ plot_metrics(
     x_col="n",
     metric_cols=[
         "BM25_R@10",
-        "BM25_MonoT5_R@10"
+        "BM25_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
         "Pipeline_DedupCutoff_R@10",
         "Pipeline_Borda_R@10",
@@ -358,7 +358,7 @@ plot_metrics(
     ],
     labels=[
         "BM25 Baseline",
-        "BM25 + MonoT5"
+        "BM25 + MonoT5",
         "Dedup Method",
         "Dedup Cutoff Method",
         "Borda Voting",
@@ -376,7 +376,7 @@ plot_metrics(
     x_col="n",
     metric_cols=[
         "BM25_nDCG@10",
-        "BM25_MonoT5_nDCG@10"
+        "BM25_MonoT5_nDCG@10",
         "Pipeline_Dedup_nDCG@10",
         "Pipeline_DedupCutoff_nDCG@10",
         "Pipeline_Borda_nDCG@10",
@@ -402,7 +402,7 @@ plot_with_regression(
     x_col="n",
     metric_cols=[
         "BM25_R@10",
-        "BM25_MonoT5_R@10"
+        "BM25_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
         "Pipeline_DedupCutoff_R@10",
         "Pipeline_Borda_R@10",
