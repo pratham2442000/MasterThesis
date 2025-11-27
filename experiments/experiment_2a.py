@@ -7,9 +7,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
 import pandas as pd
 import pyterrier as pt
-from pyterrier.measures import R, nDCG
+from pyterrier.measures import R
 from pyterrier_t5 import MonoT5ReRanker
-import pyterrier_dr as pt_dr
 
 import constants
 from code_base import dataset_factory
@@ -63,31 +62,33 @@ QUERY_LOOKUP = {str(row["qid"]): row["query"] for _, row in topics.iterrows()}
 # -----------------------------
 # Dense Retrieval Setup
 # -----------------------------
-print("Setting up dense retrieval...")
-# Initialize encoder
-encoder = pt_dr.TctColBertDocumentEncoder(DENSE_MODEL_NAME)
-# Initialize query encoder (TCT-ColBERT uses the same model for queries, but wrapped differently usually, 
-# but pyterrier_dr handles it via the retriever or we use TctColBertQueryEncoder)
-query_encoder = pt_dr.TctColBertQueryEncoder(DENSE_MODEL_NAME)
-
-# Initialize Faiss Index
-# We use FaissFlat for exact search if dataset is small, or FaissHnsw for larger.
-# Given 267MB corpus, FaissFlat is fine and accurate.
-index = pt_dr.FaissFlat(DENSE_INDEX_PATH, encoder)
-
-# Check if index exists, if not index the documents
-if not os.path.exists(os.path.join(DENSE_INDEX_PATH, "index.dpr")): # Check for specific file created by FaissFlat
-    print("Dense index not found. Indexing documents...")
-    # Ensure docs_df has 'docno' and 'text'
-    if "docno" not in docs_df.columns or "text" not in docs_df.columns:
-        raise ValueError("docs_df must contain 'docno' and 'text' columns")
-    
-    index.index(docs_df)
-    print("Indexing complete.")
-else:
-    print(f"Loading dense index from {DENSE_INDEX_PATH}...")
+# print("Setting up dense retrieval...")
+# # Initialize encoder
+# encoder = pt_dr.TctColBertDocumentEncoder(DENSE_MODEL_NAME)
+# # Initialize query encoder (TCT-ColBERT uses the same model for queries, but wrapped differently usually,
+# # but pyterrier_dr handles it via the retriever or we use TctColBertQueryEncoder)
+# query_encoder = pt_dr.TctColBertQueryEncoder(DENSE_MODEL_NAME)
+#
+# # Initialize Faiss Index
+# # We use FaissFlat for exact search if dataset is small, or FaissHnsw for larger.
+# # Given 267MB corpus, FaissFlat is fine and accurate.
+# index = pt_dr.FaissFlat(DENSE_INDEX_PATH, encoder)
+#
+# # Check if index exists, if not index the documents
+# if not os.path.exists(os.path.join(DENSE_INDEX_PATH, "index.dpr")): # Check for specific file created by FaissFlat
+#     print("Dense index not found. Indexing documents...")
+#     # Ensure docs_df has 'docno' and 'text'
+#     if "docno" not in docs_df.columns or "text" not in docs_df.columns:
+#         raise ValueError("docs_df must contain 'docno' and 'text' columns")
+#
+#     index.index(docs_df)
+#     print("Indexing complete.")
+# else:
+#     print(f"Loading dense index from {DENSE_INDEX_PATH}...")
 
 # Create Dense Retriever
+
+
 dense_retriever = query_encoder >> index
 
 # We also need the sparse index for text lookup for the reranker
