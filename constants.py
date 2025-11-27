@@ -15,6 +15,8 @@ DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage"
 
 # ==================== Index Configuration ====================
 INDEX_PATH = "./index/wiki_musique_index/data.properties"
+DENSE_INDEX_PATH = "./index/wiki_musique_dense_index"
+DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 
 # ==================== Experiment 1 Configuration ====================
 # Limits the number of topics (queries) used for experiment 1
