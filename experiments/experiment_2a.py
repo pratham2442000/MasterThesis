@@ -17,9 +17,12 @@ from code_base.experiment_utils import (
     save_experiment_results,
     preprocess_query,
     plot_with_regression,
+    QueryRewriteTransformer,
+    MergeRewrites,
+    AttachOriginalQuery
 )
-from code_base.llm_q import rewrite_single_query
 from code_base.query_trasnformers import Dedup, DedupAndCutoff, BordaVotingTransformerV2
+import pyterrier_dr as pt_dr
 
 # -----------------------------
 # Configuration (from constants.py)
@@ -62,29 +65,29 @@ QUERY_LOOKUP = {str(row["qid"]): row["query"] for _, row in topics.iterrows()}
 # -----------------------------
 # Dense Retrieval Setup
 # -----------------------------
-# print("Setting up dense retrieval...")
-# # Initialize encoder
-# encoder = pt_dr.TctColBertDocumentEncoder(DENSE_MODEL_NAME)
-# # Initialize query encoder (TCT-ColBERT uses the same model for queries, but wrapped differently usually,
-# # but pyterrier_dr handles it via the retriever or we use TctColBertQueryEncoder)
-# query_encoder = pt_dr.TctColBertQueryEncoder(DENSE_MODEL_NAME)
-#
-# # Initialize Faiss Index
-# # We use FaissFlat for exact search if dataset is small, or FaissHnsw for larger.
-# # Given 267MB corpus, FaissFlat is fine and accurate.
-# index = pt_dr.FaissFlat(DENSE_INDEX_PATH, encoder)
-#
-# # Check if index exists, if not index the documents
-# if not os.path.exists(os.path.join(DENSE_INDEX_PATH, "index.dpr")): # Check for specific file created by FaissFlat
-#     print("Dense index not found. Indexing documents...")
-#     # Ensure docs_df has 'docno' and 'text'
-#     if "docno" not in docs_df.columns or "text" not in docs_df.columns:
-#         raise ValueError("docs_df must contain 'docno' and 'text' columns")
-#
-#     index.index(docs_df)
-#     print("Indexing complete.")
-# else:
-#     print(f"Loading dense index from {DENSE_INDEX_PATH}...")
+print("Setting up dense retrieval...")
+# Initialize encoder
+encoder = pt_dr.TctColBertDocumentEncoder(DENSE_MODEL_NAME)
+# Initialize query encoder (TCT-ColBERT uses the same model for queries, but wrapped differently usually,
+# but pyterrier_dr handles it via the retriever or we use TctColBertQueryEncoder)
+query_encoder = pt_dr.TctColBertQueryEncoder(DENSE_MODEL_NAME)
+
+# Initialize Faiss Index
+# We use FaissFlat for exact search if dataset is small, or FaissHnsw for larger.
+# Given 267MB corpus, FaissFlat is fine and accurate.
+index = pt_dr.FaissFlat(DENSE_INDEX_PATH, encoder)
+
+# Check if index exists, if not index the documents
+if not os.path.exists(os.path.join(DENSE_INDEX_PATH, "index.dpr")):  # Check for specific file created by FaissFlat
+    print("Dense index not found. Indexing documents...")
+    # Ensure docs_df has 'docno' and 'text'
+    if "docno" not in docs_df.columns or "text" not in docs_df.columns:
+        raise ValueError("docs_df must contain 'docno' and 'text' columns")
+
+    index.index(docs_df)
+    print("Indexing complete.")
+else:
+    print(f"Loading dense index from {DENSE_INDEX_PATH}...")
 
 # Create Dense Retriever
 
@@ -100,82 +103,6 @@ mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 # -----------------------------
 # Transformers
 # -----------------------------
-class QueryRewriteTransformer(pt.Transformer):
-    """
-    Transformer that reads preprocessed query rewrites from a dataset file.
-    Uses rewrite_single_query to get k rewrites for each query ID.
-    """
-
-    def __init__(self, n: int, dataset_name: str = None):
-        self.n = n
-        if dataset_name is not None:
-            self.dataset_name = dataset_name
-        else:
-            self.dataset_name = constants.DATASET_NAME
-
-    def transform(self, topics_like: pd.DataFrame) -> pd.DataFrame:
-        out_rows = []
-        for _, row in topics_like.iterrows():
-            qid = row["qid"]
-            query = row["query"]
-            try:
-                rewrites = [query] + rewrite_single_query(
-                    self.dataset_name, str(qid), self.n - 1
-                )
-            except (ValueError, FileNotFoundError, KeyError) as e:
-                print(
-                    f"Warning: Could not load rewrites for qid {qid}: {e}. Using original query."
-                )
-                rewrites = [query] * self.n
-            for i, rw in enumerate(rewrites):
-                out_rows.append(
-                    {
-                        "qid": f"{qid}_{i}",  # unique sub-qid for each rewrite
-                        "orig_qid": qid,  # store the original qid
-                        "query": preprocess_query(rw),
-                    }
-                )
-        return pd.DataFrame(out_rows)
-
-
-class MergeRewrites(pt.Transformer):
-    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
-        # restore original qid for further dedup/ranking
-        res["qid"] = res["qid"].apply(lambda x: x.split("_")[0])
-        return res
-
-
-class AttachOriginalQuery(pt.Transformer):
-    """
-    Ensure the 'query' column contains the original topic query (needed by MonoT5).
-    """
-
-    def __init__(self, query_lookup: dict):
-        self.query_lookup = {str(k): v for k, v in query_lookup.items()}
-
-    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
-        if res.empty:
-            return res
-
-        res = res.copy()
-        mapped = res["qid"].astype(str).map(self.query_lookup)
-
-        # Fallback to orig_qid if available (e.g., before MergeRewrites)
-        if mapped.isna().any() and "orig_qid" in res.columns:
-            fallback = res.loc[mapped.isna(), "orig_qid"].astype(str).map(
-                self.query_lookup
-            )
-            mapped.fillna(fallback, inplace=True)
-
-        if mapped.isna().any():
-            missing_qids = res.loc[mapped.isna(), "qid"].unique()
-            raise KeyError(
-                f"Could not attach original queries for qids: {missing_qids}. "
-                "Ensure topics include these qids."
-            )
-
-        res["query"] = mapped
-        return res
 
 
 # -----------------------------
@@ -183,22 +110,7 @@ class AttachOriginalQuery(pt.Transformer):
 # -----------------------------
 print("Running experiment 2a with dense retrieval and query rewriting pipeline...")
 
-results = {"n": N_REWRITES}
-for i in EVAL_METRICS:
-    results["Dense_" + str(i)] = []
-    results["Dense_MonoT5_" + str(i)] = []
-    results["Pipeline_Dedup_" + str(i)] = []
-    results["Pipeline_DedupCutoff_" + str(i)] = []
-    results["Pipeline_Borda_" + str(i)] = []
-    results["Pipeline_BordaWeighted_" + str(i)] = []
-
-results["Dense_R@c"] = []
-results["Dense_MonoT5_R@c"] = []
-results["Pipeline_Dedup_R@c"] = []
-results["Pipeline_DedupCutoff_R@c"] = []
-results["Pipeline_Borda_R@c"] = []
-results["Pipeline_BordaWeighted_R@c"] = []
-
+results_list = []
 attach_query = AttachOriginalQuery(QUERY_LOOKUP)
 
 for N in N_REWRITES:
@@ -268,6 +180,9 @@ for N in N_REWRITES:
             >> mono_t5_reranker
     )
 
+    # Define metrics for this iteration
+    current_metrics = EVAL_METRICS + [R @ RETRIEVAL_CUTOFF]
+
     experiment_results = pt.Experiment(
         [
             dense_base,
@@ -279,10 +194,10 @@ for N in N_REWRITES:
         ],
         topics,
         qrels_df,
-        eval_metrics=EVAL_METRICS + [R @ RETRIEVAL_CUTOFF],
+        eval_metrics=current_metrics,
         names=[
             "Dense",
-            "Dense+MonoT5",
+            "Dense_MonoT5",  # Changed from Dense+MonoT5 to match key naming convention
             "Pipeline_Dedup",
             "Pipeline_DedupCutoff",
             "Pipeline_Borda",
@@ -292,72 +207,43 @@ for N in N_REWRITES:
         batch_size=EXPERIMENT_BATCH_SIZE,
     )
 
-    # Store results for all methods
-    results["Dense_R@10"].append(float(experiment_results["R@10"].iloc[0]))
-    results["Dense_MonoT5_R@10"].append(float(experiment_results["R@10"].iloc[1]))
-    results["Pipeline_Dedup_R@10"].append(float(experiment_results["R@10"].iloc[2]))
-    results["Pipeline_DedupCutoff_R@10"].append(float(experiment_results["R@10"].iloc[3]))
-    results["Pipeline_Borda_R@10"].append(float(experiment_results["R@10"].iloc[4]))
-    results["Pipeline_BordaWeighted_R@10"].append(float(experiment_results["R@10"].iloc[5]))
+    # Collect results for this 'N'
+    row_data = {"n": N}
 
-    results["Dense_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[0]))
-    results["Dense_MonoT5_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[1]))
-    results["Pipeline_Dedup_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[2]))
-    results["Pipeline_DedupCutoff_nDCG@10"].append(
-        float(experiment_results["nDCG@10"].iloc[3])
-    )
-    results["Pipeline_Borda_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[4]))
-    results["Pipeline_BordaWeighted_nDCG@10"].append(
-        float(experiment_results["nDCG@10"].iloc[5])
-    )
+    for _, exp_row in experiment_results.iterrows():
+        system_name = exp_row["name"]
+        for metric in current_metrics:
+            metric_str = str(metric)
+            val = exp_row[metric_str]
 
-    results["Dense_R@c"].append(float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[0]))
-    results["Dense_MonoT5_R@c"].append(float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[1]))
-    results["Pipeline_Dedup_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[2])
-    )
-    results["Pipeline_DedupCutoff_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[3])
-    )
-    results["Pipeline_Borda_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[4])
-    )
-    results["Pipeline_BordaWeighted_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[5])
-    )
+            # Map dynamic R@c to fixed column name "R@c" for consistency
+            if metric_str == f"R@{RETRIEVAL_CUTOFF}":
+                key = f"{system_name}_R@c"
+            else:
+                key = f"{system_name}_{metric_str}"
 
-    dense_r10 = results["Dense_R@10"][-1]
-    dense_monot5_r10 = results["Dense_MonoT5_R@10"][-1]
-    dedup_r10 = results["Pipeline_Dedup_R@10"][-1]
-    dedupCutoff = results["Pipeline_DedupCutoff_R@10"][-1]
-    borda_r10 = results["Pipeline_Borda_R@10"][-1]
-    borda_w_r10 = results["Pipeline_BordaWeighted_R@10"][-1]
+            row_data[key] = val
 
-    dense_ndcg = results["Dense_nDCG@10"][-1]
-    dense_monot5_ndcg = results["Dense_MonoT5_nDCG@10"][-1]
-    dedup_ndcg = results["Pipeline_Dedup_nDCG@10"][-1]
-    dedupCutoff_ndcg = results["Pipeline_DedupCutoff_nDCG@10"][-1]
-    borda_ndcg = results["Pipeline_Borda_nDCG@10"][-1]
-    borda_w_ndcg = results["Pipeline_BordaWeighted_nDCG@10"][-1]
+    results_list.append(row_data)
 
     print("\n\n")
 
     print(
-        f"n={N}: Dense R@10={dense_r10:.4f}, "
-        f"Dense + MonoT5 R@10={dense_monot5_r10:.4f},"
-        f"Dedup R@10={dedup_r10:.4f}, "
-        f"DedupCutoff R@10={dedupCutoff:.4f}, "
-        f"Borda R@10={borda_r10:.4f}, "
-        f"BordaWeighted R@10={borda_w_r10:.4f}, "
-        f"Dense NDCG@10={dense_ndcg:.4f}, "
-        f"Dense + MonoT5 NDCG@10={dense_monot5_ndcg:.4f}, "
-        f"Dedup NDCG@10={dedup_ndcg:.4f}, "
-        f"DedupCutoff NDCG@10={dedupCutoff_ndcg:.4f}, "
-        f"Borda NDCG@10={borda_ndcg:.4f}, "
-        f"BordaWeighted NDCG@10={borda_w_ndcg:.4f}"
+        f"n={N}: Dense R@10={row_data.get('Dense_R@10', 0):.4f}, "
+        f"Dense + MonoT5 R@10={row_data.get('Dense_MonoT5_R@10', 0):.4f},"
+        f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
+        f"DedupCutoff R@10={row_data.get('Pipeline_DedupCutoff_R@10', 0):.4f}, "
+        f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
+        f"BordaWeighted R@10={row_data.get('Pipeline_BordaWeighted_R@10', 0):.4f}, "
+        f"Dense NDCG@10={row_data.get('Dense_nDCG@10', 0):.4f}, "
+        f"Dense + MonoT5 NDCG@10={row_data.get('Dense_MonoT5_nDCG@10', 0):.4f}, "
+        f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
+        f"DedupCutoff NDCG@10={row_data.get('Pipeline_DedupCutoff_nDCG@10', 0):.4f}, "
+        f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
+        f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}"
     )
 
-results_df = pd.DataFrame(results)
+results_df = pd.DataFrame(results_list)
 
 save_experiment_results(
     results_df,
@@ -366,7 +252,7 @@ save_experiment_results(
     filename="experiment_2a_results",
 )
 
-print(results)
+print(results_df)
 
 plot_metrics(
     results_df,

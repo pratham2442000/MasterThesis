@@ -23,6 +23,7 @@ try:
 except Exception:
     # Fallback to community ChatOpenAI import path (older LangChain versions)
     try:
+        # noinspection PyProtectedMember
         from langchain.chat_models import ChatOpenAI  # type: ignore
 
         _MODEL_BACKEND = "openai"

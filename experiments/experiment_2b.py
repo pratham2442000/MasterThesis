@@ -1,7 +1,7 @@
 import os
 import sys
 
-# Add parent directory to path to allow importing constants and code_base
+# Add parent directory to a path to allow importing constants and code_base
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import numpy as np
@@ -17,8 +17,10 @@ from code_base.experiment_utils import (
     save_experiment_results,
     preprocess_query,
     plot_with_regression,
+    QueryRewriteTransformer,
+    MergeRewrites,
+    AttachOriginalQuery
 )
-from code_base.llm_q import rewrite_single_query
 from code_base.query_trasnformers import Dedup, DedupAndCutoff, BordaVotingTransformerV2
 
 # -----------------------------
@@ -62,53 +64,6 @@ bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
 mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
 
-# -----------------------------
-# Transformers
-# -----------------------------
-class QueryRewriteTransformer(pt.Transformer):
-    """
-    Transformer that reads preprocessed query rewrites from a dataset file.
-    Uses rewrite_single_query to get k rewrites for each query ID.
-    """
-
-    def __init__(self, n: int, dataset_name: str = None):
-        self.n = n
-        if dataset_name is not None:
-            self.dataset_name = dataset_name
-        else:
-            self.dataset_name = constants.DATASET_NAME
-
-    def transform(self, topics_like: pd.DataFrame) -> pd.DataFrame:
-        out_rows = []
-        for _, row in topics_like.iterrows():
-            qid = row["qid"]
-            query = row["query"]
-            try:
-                rewrites = [query] + rewrite_single_query(
-                    self.dataset_name, str(qid), self.n - 1
-                )
-            except (ValueError, FileNotFoundError, KeyError) as e:
-                print(
-                    f"Warning: Could not load rewrites for qid {qid}: {e}. Using original query."
-                )
-                rewrites = [query] * self.n
-            for i, rw in enumerate(rewrites):
-                out_rows.append(
-                    {
-                        "qid": f"{qid}_{i}",  # unique sub-qid for each rewrite
-                        "orig_qid": qid,  # store the original qid
-                        "query": preprocess_query(rw),
-                    }
-                )
-        return pd.DataFrame(out_rows)
-
-
-class MergeRewrites(pt.Transformer):
-    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
-        # restore original qid for further dedup/ranking
-        res["qid"] = res["qid"].apply(lambda x: x.split("_")[0])
-        return res
-
 
 # -----------------------------
 # Experiment
@@ -116,25 +71,12 @@ class MergeRewrites(pt.Transformer):
 print("\n\n\n")
 print("Running experiment 2b (Rerank then Merge)...")
 
-results = {"n": N_REWRITES}
-for i in EVAL_METRICS:
-    results["BM25_" + str(i)] = []
-    results["BM25_MonoT5_" + str(i)] = []
-    results["Pipeline_Dedup_" + str(i)] = []
-    results["Pipeline_DedupCutoff_" + str(i)] = []
-    results["Pipeline_Borda_" + str(i)] = []
-    results["Pipeline_BordaWeighted_" + str(i)] = []
-
-results["BM25_R@c"] = []
-results["BM25_MonoT5_R@c"] = []
-results["Pipeline_Dedup_R@c"] = []
-results["Pipeline_DedupCutoff_R@c"] = []
-results["Pipeline_Borda_R@c"] = []
-results["Pipeline_BordaWeighted_R@c"] = []
+results_list = []
+attach_query = AttachOriginalQuery(QUERY_LOOKUP)
 
 for N in N_REWRITES:
     rewrite = QueryRewriteTransformer(N, dataset_name=constants.DATASET_NAME)
-    dedup_topk = DedupAndCutoff(RETRIEVAL_CUTOFF)
+    dedup_top_k = DedupAndCutoff(RETRIEVAL_CUTOFF)
     dedup = Dedup()
 
     # Borda voting transformers
@@ -175,7 +117,7 @@ for N in N_REWRITES:
             >> pt.text.get_text(index_ref, "text")
             >> mono_t5_reranker
             >> MergeRewrites()
-            >> dedup_topk
+            >> dedup_top_k
     )
 
     # Pipeline 2: Borda voting method
@@ -197,6 +139,9 @@ for N in N_REWRITES:
             >> borda_voting_weighted
     )
 
+    # Define metrics for this iteration
+    current_metrics = EVAL_METRICS + [R @ RETRIEVAL_CUTOFF]
+
     experiment_results = pt.Experiment(
         [
             bm25_base,
@@ -208,10 +153,10 @@ for N in N_REWRITES:
         ],
         topics,
         qrels_df,
-        eval_metrics=EVAL_METRICS + [R @ RETRIEVAL_CUTOFF],
+        eval_metrics=current_metrics,
         names=[
             "BM25",
-            "BM25+MonoT5",
+            "BM25_MonoT5",  # Changed from BM25+MonoT5 to match key naming convention
             "Pipeline_Dedup",
             "Pipeline_DedupCutoff",
             "Pipeline_Borda",
@@ -221,72 +166,43 @@ for N in N_REWRITES:
         batch_size=EXPERIMENT_BATCH_SIZE,
     )
 
-    # Store results for all methods
-    results["BM25_R@10"].append(float(experiment_results["R@10"].iloc[0]))
-    results["BM25_MonoT5_R@10"].append(float(experiment_results["R@10"].iloc[1]))
-    results["Pipeline_Dedup_R@10"].append(float(experiment_results["R@10"].iloc[2]))
-    results["Pipeline_DedupCutoff_R@10"].append(float(experiment_results["R@10"].iloc[3]))
-    results["Pipeline_Borda_R@10"].append(float(experiment_results["R@10"].iloc[4]))
-    results["Pipeline_BordaWeighted_R@10"].append(float(experiment_results["R@10"].iloc[5]))
+    # Collect results for this 'N'
+    row_data = {"n": N}
 
-    results["BM25_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[0]))
-    results["BM25_MonoT5_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[1]))
-    results["Pipeline_Dedup_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[2]))
-    results["Pipeline_DedupCutoff_nDCG@10"].append(
-        float(experiment_results["nDCG@10"].iloc[3])
-    )
-    results["Pipeline_Borda_nDCG@10"].append(float(experiment_results["nDCG@10"].iloc[4]))
-    results["Pipeline_BordaWeighted_nDCG@10"].append(
-        float(experiment_results["nDCG@10"].iloc[5])
-    )
+    for _, exp_row in experiment_results.iterrows():
+        system_name = exp_row["name"]
+        for metric in current_metrics:
+            metric_str = str(metric)
+            val = exp_row[metric_str]
 
-    results["BM25_R@c"].append(float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[0]))
-    results["BM25_MonoT5_R@c"].append(float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[1]))
-    results["Pipeline_Dedup_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[2])
-    )
-    results["Pipeline_DedupCutoff_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[3])
-    )
-    results["Pipeline_Borda_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[4])
-    )
-    results["Pipeline_BordaWeighted_R@c"].append(
-        float(experiment_results[f"R@{RETRIEVAL_CUTOFF}"].iloc[5])
-    )
+            # Map dynamic R@c to fixed column name "R@c" for consistency
+            if metric_str == f"R@{RETRIEVAL_CUTOFF}":
+                key = f"{system_name}_R@c"
+            else:
+                key = f"{system_name}_{metric_str}"
 
-    bm25_r10 = results["BM25_R@10"][-1]
-    bm25_monot5_r10 = results["BM25_MonoT5_R@10"][-1]
-    dedup_r10 = results["Pipeline_Dedup_R@10"][-1]
-    dedupCutoff = results["Pipeline_DedupCutoff_R@10"][-1]
-    borda_r10 = results["Pipeline_Borda_R@10"][-1]
-    borda_w_r10 = results["Pipeline_BordaWeighted_R@10"][-1]
+            row_data[key] = val
 
-    bm25_ndcg = results["BM25_nDCG@10"][-1]
-    bm25_monot5_ndcg = results["BM25_MonoT5_nDCG@10"][-1]
-    dedup_ndcg = results["Pipeline_Dedup_nDCG@10"][-1]
-    dedupCutoff_ndcg = results["Pipeline_DedupCutoff_nDCG@10"][-1]
-    borda_ndcg = results["Pipeline_Borda_nDCG@10"][-1]
-    borda_w_ndcg = results["Pipeline_BordaWeighted_nDCG@10"][-1]
+    results_list.append(row_data)
 
     print("\n\n")
 
     print(
-        f"n={N}: BM25 R@10={bm25_r10:.4f}, "
-        f"BM25 + MonoT5 R@10={bm25_monot5_r10:.4f},"
-        f"Dedup R@10={dedup_r10:.4f}, "
-        f"DedupCutoff R@10={dedupCutoff:.4f}, "
-        f"Borda R@10={borda_r10:.4f}, "
-        f"BordaWeighted R@10={borda_w_r10:.4f}, "
-        f"BM25 NDCG@10={bm25_ndcg:.4f}, "
-        f"BM25 + MonoT5 NDCG@10={bm25_monot5_ndcg:.4f}, "
-        f"Dedup NDCG@10={dedup_ndcg:.4f}, "
-        f"DedupCutoff NDCG@10={dedupCutoff_ndcg:.4f}, "
-        f"Borda NDCG@10={borda_ndcg:.4f}, "
-        f"BordaWeighted NDCG@10={borda_w_ndcg:.4f}"
+        f"n={N}: BM25 R@10={row_data.get('BM25_R@10', 0):.4f}, "
+        f"BM25 + MonoT5 R@10={row_data.get('BM25_MonoT5_R@10', 0):.4f},"
+        f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
+        f"DedupCutoff R@10={row_data.get('Pipeline_DedupCutoff_R@10', 0):.4f}, "
+        f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
+        f"BordaWeighted R@10={row_data.get('Pipeline_BordaWeighted_R@10', 0):.4f}, "
+        f"BM25 NDCG@10={row_data.get('BM25_nDCG@10', 0):.4f}, "
+        f"BM25 + MonoT5 NDCG@10={row_data.get('BM25_MonoT5_nDCG@10', 0):.4f}, "
+        f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
+        f"DedupCutoff NDCG@10={row_data.get('Pipeline_DedupCutoff_nDCG@10', 0):.4f}, "
+        f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
+        f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}"
     )
 
-results_df = pd.DataFrame(results)
+results_df = pd.DataFrame(results_list)
 
 save_experiment_results(
     results_df,
@@ -295,7 +211,7 @@ save_experiment_results(
     filename="experiment_2b_results",
 )
 
-print(results)
+print(results_df)
 
 plot_metrics(
     results_df,

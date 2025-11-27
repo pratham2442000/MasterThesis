@@ -52,14 +52,7 @@ index_ref = pt.IndexFactory.of(INDEX_PATH)
 
 mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
-results = {}
-results["c"] = C_VALUES
-for i in EVAL_METRICS:
-    results["BM25_" + str(i)] = []
-    results["Pipeline_" + str(i)] = []
-
-results["BM25_R@c"] = []
-results["Pipeline_R@c"] = []
+results_list = []
 
 print(f"\nStarting experiment for initial cutoff (c) in: {C_VALUES}")
 
@@ -68,40 +61,50 @@ for c in C_VALUES:
     bm25_retrieved = bm25 % c
     pipeline = bm25_retrieved >> pt.text.get_text(index_ref, "text") >> mono_t5_reranker
 
+    # Define metrics for this iteration
+    current_metrics = EVAL_METRICS + [R @ c]
+
     experiment_results = pt.Experiment(
         [bm25_retrieved, pipeline],
         topics,
         qrels_df,
-        eval_metrics=EVAL_METRICS + [R @ c],
+        eval_metrics=current_metrics,
         names=["BM25", "Pipeline"],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
     )
 
-    results["BM25_R@10"].append(float(experiment_results["R@10"][0]))
-    results["Pipeline_R@10"].append(float(experiment_results["R@10"][1]))
-    results["BM25_nDCG@10"].append(float(experiment_results["nDCG@10"][0]))
-    results["Pipeline_nDCG@10"].append(float(experiment_results["nDCG@10"][1]))
-    results["BM25_R@c"].append(float(experiment_results[f"R@{c}"][0]))
-    results["Pipeline_R@c"].append(float(experiment_results[f"R@{c}"][1]))
+    # Collect results for this 'c'
+    row_data = {"c": c}
 
-    bm25_r10 = results["BM25_R@10"][-1]
-    pipe_r10 = results["Pipeline_R@10"][-1]
-    bm25_ndcg = results["BM25_nDCG@10"][-1]
-    pipe_ndcg = results["Pipeline_nDCG@10"][-1]
-    bm25_rc = results["BM25_R@c"][-1]
-    pipe_rc = results["Pipeline_R@c"][-1]
+    for _, exp_row in experiment_results.iterrows():
+        system_name = exp_row["name"]
+        for metric in current_metrics:
+            metric_str = str(metric)
+            val = exp_row[metric_str]
 
+            # Map dynamic R@c to fixed column name "R@c" for consistency
+            if metric_str == f"R@{c}":
+                key = f"{system_name}_R@c"
+            else:
+                key = f"{system_name}_{metric_str}"
+
+            row_data[key] = val
+
+    results_list.append(row_data)
+
+    # Print summary
     print(
-        f"c={c}: BM25 R@10={bm25_r10:.4f}, "
-        f"Pipeline R@10={pipe_r10:.4f}, "
-        f"BM25 NDCG@10={bm25_ndcg:.4f}, "
-        f"Pipeline NDCG@10={pipe_ndcg:.4f}, "
-        f"BM25 R@{c}={bm25_rc:.4f}, "
-        f"Pipeline R@{c}={pipe_rc:.4f}"
+        f"c={c}: "
+        f"BM25 R@10={row_data.get('BM25_R@10', 0):.4f}, "
+        f"Pipeline R@10={row_data.get('Pipeline_R@10', 0):.4f}, "
+        f"BM25 NDCG@10={row_data.get('BM25_nDCG@10', 0):.4f}, "
+        f"Pipeline NDCG@10={row_data.get('Pipeline_nDCG@10', 0):.4f}, "
+        f"BM25 R@{c}={row_data.get('BM25_R@c', 0):.4f}, "
+        f"Pipeline R@{c}={row_data.get('Pipeline_R@c', 0):.4f}"
     )
 
-results_df = pd.DataFrame(results)
+results_df = pd.DataFrame(results_list)
 
 # Save results with metadata
 save_experiment_results(
@@ -120,9 +123,9 @@ print(results_df)
 plot_metrics(
     results_df,
     x_col="c",
-    metric_cols=["BM25_R@10", "Pipeline_R@10", "BM25_R@c", "Pipeline_R@c"],
+    metric_cols=["BM25_R@10", "Pipeline_R@10"],
     labels=["BM25 Baseline", "BM25 + MonoT5 Re-ranker"],
-    title="Effect of Initial Cutoff (c) on Recall (R@10 and R@c)",
+    title="Effect of Initial Cutoff (c) on Recall (R@10)",
     xlabel="Initial Cutoff (c) for BM25 Retrieval",
     filename="/cutoff_vs_R.png",
     output_dir=RESULTS_PATH,
@@ -150,12 +153,12 @@ print("\n--- Linear Regression Analysis (log(c) vs R@10) ---")
 plot_with_regression(
     results_df,
     x_col="c",
-    metric_cols=["BM25_R@10", "Pipeline_R@10", "BM25_R@c", "Pipeline_R@c"],
+    metric_cols=["BM25_R@10", "Pipeline_R@10"],
     labels=["BM25 (Baseline) R@10", "Pipeline (BM25+MonoT5) R@10"],
     use_log_scale=True,
-    title="R (@ 10, c) vs. Initial Cutoff (c) with Log(c) Linear Regression",
+    title="R (@ 10) vs. Initial Cutoff (c) with Log(c) Linear Regression",
     xlabel="Initial Cutoff (c) for BM25 Retrieval (log scale)",
-    ylabel="Recall (R@10 and R@c)",
+    ylabel="Recall (R@10)",
     filename="/cutoff_R_at_10_log_regression.png",
     output_dir=RESULTS_PATH,
 )

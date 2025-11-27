@@ -352,7 +352,7 @@ def save_experiment_results(
     # Convert PyTerrier results to DataFrame if needed
     if not isinstance(results_df, pd.DataFrame):
         if hasattr(results_df, "to_csv"):
-            # It's a Styler or similar, get the underlying DataFrame
+            # It is a Styler or similar, get the underlying DataFrame
             if hasattr(results_df, "data"):
                 results_df = results_df.data
             else:
@@ -443,3 +443,89 @@ def find_experiment_files(
             "csv": csv_files,
             "metadata": metadata_files,
         }
+
+
+# -----------------------------
+# Transformers
+# -----------------------------
+
+import pyterrier as pt
+from code_base.llm_q import rewrite_single_query
+
+
+class QueryRewriteTransformer(pt.Transformer):
+    """
+    Transformer that reads preprocessed query rewrites from a dataset file.
+    Uses rewrite_single_query to get k rewrites for each query ID.
+    """
+
+    def __init__(self, n: int, dataset_name: str = None):
+        self.n = n
+        if dataset_name is not None:
+            self.dataset_name = dataset_name
+        else:
+            self.dataset_name = constants.DATASET_NAME
+
+    def transform(self, topics_like: pd.DataFrame) -> pd.DataFrame:
+        out_rows = []
+        for _, row in topics_like.iterrows():
+            qid = row["qid"]
+            query = row["query"]
+            try:
+                rewrites = [query] + rewrite_single_query(
+                    self.dataset_name, str(qid), self.n - 1
+                )
+            except (ValueError, FileNotFoundError, KeyError) as e:
+                print(
+                    f"Warning: Could not load rewrites for qid {qid}: {e}. Using original query."
+                )
+                rewrites = [query] * self.n
+            for i, rw in enumerate(rewrites):
+                out_rows.append(
+                    {
+                        "qid": f"{qid}_{i}",  # unique sub-qid for each rewrite
+                        "orig_qid": qid,  # store the original qid
+                        "query": preprocess_query(rw),
+                    }
+                )
+        return pd.DataFrame(out_rows)
+
+
+class MergeRewrites(pt.Transformer):
+    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
+        # restore original qid for further dedup/ranking
+        res["qid"] = res["qid"].apply(lambda x: x.split("_")[0])
+        return res
+
+
+class AttachOriginalQuery(pt.Transformer):
+    """
+    Ensure the 'query' column contains the original topic query (needed by MonoT5).
+    """
+
+    def __init__(self, query_lookup: dict):
+        self.query_lookup = {str(k): v for k, v in query_lookup.items()}
+
+    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
+        if res.empty:
+            return res
+
+        res = res.copy()
+        mapped = res["qid"].astype(str).map(self.query_lookup)
+
+        # Fallback to orig_qid if available (e.g., before MergeRewrites)
+        if mapped.isna().any() and "orig_qid" in res.columns:
+            fallback = res.loc[mapped.isna(), "orig_qid"].astype(str).map(
+                self.query_lookup
+            )
+            mapped.fillna(fallback, inplace=True)
+
+        if mapped.isna().any():
+            missing_qids = res.loc[mapped.isna(), "qid"].unique()
+            raise KeyError(
+                f"Could not attach original queries for qids: {missing_qids}. "
+                "Ensure topics include these qids."
+            )
+
+        res["query"] = mapped
+        return res
