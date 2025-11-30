@@ -43,6 +43,14 @@ EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
 # List or single int
 EXPERIMENT_2_C_VALUES = [int(i) for i in np.linspace(10, 100, 2, dtype=int)]
 
+# ==================== Experiment 2c Configuration ====================
+# Fixed number of rewrites
+EXPERIMENT_2C_REWRITING_COUNT = 15
+
+# Range of 'c' values (cutoff) to experiment with
+# Reusing Experiment 1 values as requested
+EXPERIMENT_2C_C_VALUES = EXPERIMENT_1_C_VALUES
+
 # ==================== Experiment 3 Configuration ====================
 # Limits the number of topics (queries) used for experiment 3
 # default 1000

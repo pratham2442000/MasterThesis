@@ -108,7 +108,6 @@ def plot_metrics(
     print(f"Chart saved as {filepath}")
     plt.close()
 
-
 def plot_with_regression(
         df: pd.DataFrame,
         x_col: str,

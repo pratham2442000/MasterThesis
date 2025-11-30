@@ -1,0 +1,27 @@
+{
+  "experiment_name": "experiment_1",
+  "timestamp": "2025-11-27T01:21:39.908979",
+  "data_path": "/content/data/2wikimultihopQA",
+  "data_split": "test",
+  "dataset_name": "wiki_musique",
+  "index_path": "./index/wiki_musique_index/data.properties",
+  "topic_limit": 100,
+  "c_values": [
+    10,
+    16,
+    27,
+    46,
+    77,
+    129,
+    215,
+    359,
+    599,
+    1000
+  ],
+  "t5_batch_size": 16,
+  "experiment_batch_size": 20,
+  "eval_metrics": [
+    "R@10",
+    "nDCG@10"
+  ]
+}

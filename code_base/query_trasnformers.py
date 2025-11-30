@@ -24,7 +24,7 @@ def borda_count(rankings, k, all_docs, weight=None):
             # 1. Standard Borda: points = number of items below this one
             # raw_score = (list_len - rank)
 
-            # 2. Normalized Borda (Recommended):
+            # 2. Normalized Borda:
             # Normalized between 0 and 1 to prevent longer lists dominating results
             # Top doc gets 1.0, bottom doc gets ~0.0
             normalized_rank = (list_len - rank) / list_len
