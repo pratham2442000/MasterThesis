@@ -21,7 +21,7 @@ from code_base.experiment_utils import (
     MergeRewrites,
     AttachOriginalQuery
 )
-from code_base.query_trasnformers import Dedup, DedupAndCutoff, BordaVotingTransformerV2
+from code_base.query_trasnformers import Dedup, BordaVotingTransformerV2
 
 # -----------------------------
 # Configuration (from constants.py)
@@ -42,7 +42,6 @@ INDEX_PATH = constants.INDEX_PATH
 TOPIC_LIMIT = constants.EXPERIMENT_2_TOPIC_LIMIT
 N_REWRITES = constants.EXPERIMENT_2_N_REWRITES
 EVAL_METRICS = constants.EXPERIMENT_2_EVAL_METRICS
-C_VALUES = constants.EXPERIMENT_2_C_VALUES
 RETRIEVAL_CUTOFF = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
 
 # Reranker
@@ -76,7 +75,7 @@ attach_query = AttachOriginalQuery(QUERY_LOOKUP)
 
 for N in N_REWRITES:
     rewrite = QueryRewriteTransformer(N, dataset_name=constants.DATASET_NAME)
-    dedup_top_k = DedupAndCutoff(RETRIEVAL_CUTOFF)
+
     dedup = Dedup()
 
     # Borda voting transformers
@@ -110,16 +109,6 @@ for N in N_REWRITES:
             >> dedup
     )
 
-    # Pipeline 1.1: Dedup method with cutoff
-    pipeline_dedup_cutoff = (
-            rewrite
-            >> bm25 % RETRIEVAL_CUTOFF
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-            >> MergeRewrites()
-            >> dedup_top_k
-    )
-
     # Pipeline 2: Borda voting method
     # rewrite -> bm25 -> text -> monoT5 -> borda (borda handles merge)
     pipeline_borda = (
@@ -147,7 +136,7 @@ for N in N_REWRITES:
             bm25_base,
             pipeline_bm25_t5,
             pipeline_dedup,
-            pipeline_dedup_cutoff,
+
             pipeline_borda,
             pipeline_borda_weighted,
         ],
@@ -158,7 +147,7 @@ for N in N_REWRITES:
             "BM25",
             "BM25_MonoT5",  # Changed from BM25+MonoT5 to match key naming convention
             "Pipeline_Dedup",
-            "Pipeline_DedupCutoff",
+
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
         ],
@@ -191,13 +180,13 @@ for N in N_REWRITES:
         f"n={N}: BM25 R@10={row_data.get('BM25_R@10', 0):.4f}, "
         f"BM25 + MonoT5 R@10={row_data.get('BM25_MonoT5_R@10', 0):.4f},"
         f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
-        f"DedupCutoff R@10={row_data.get('Pipeline_DedupCutoff_R@10', 0):.4f}, "
+
         f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
         f"BordaWeighted R@10={row_data.get('Pipeline_BordaWeighted_R@10', 0):.4f}, "
         f"BM25 NDCG@10={row_data.get('BM25_nDCG@10', 0):.4f}, "
         f"BM25 + MonoT5 NDCG@10={row_data.get('BM25_MonoT5_nDCG@10', 0):.4f}, "
         f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
-        f"DedupCutoff NDCG@10={row_data.get('Pipeline_DedupCutoff_nDCG@10', 0):.4f}, "
+
         f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
         f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}"
     )
@@ -220,7 +209,7 @@ plot_metrics(
         "BM25_R@10",
         "BM25_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
-        "Pipeline_DedupCutoff_R@10",
+
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
     ],
@@ -228,7 +217,7 @@ plot_metrics(
         "BM25 Baseline",
         "BM25 + MonoT5",
         "Dedup Method",
-        "Dedup Cutoff Method",
+
         "Borda Voting",
         "Borda Weighted",
     ],
@@ -246,7 +235,7 @@ plot_metrics(
         "BM25_nDCG@10",
         "BM25_MonoT5_nDCG@10",
         "Pipeline_Dedup_nDCG@10",
-        "Pipeline_DedupCutoff_nDCG@10",
+
         "Pipeline_Borda_nDCG@10",
         "Pipeline_BordaWeighted_nDCG@10",
     ],
@@ -254,7 +243,7 @@ plot_metrics(
         "BM25 Baseline",
         "BM25+MonoT5",
         "Dedup Method",
-        "Dedup Cutoff Method",
+
         "Borda Voting",
         "Borda Weighted",
     ],
@@ -272,7 +261,7 @@ plot_with_regression(
         "BM25_R@10",
         "BM25_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
-        "Pipeline_DedupCutoff_R@10",
+
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
     ],

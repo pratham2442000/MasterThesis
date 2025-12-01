@@ -21,7 +21,7 @@ from code_base.experiment_utils import (
     MergeRewrites,
     AttachOriginalQuery
 )
-from code_base.query_trasnformers import Dedup, DedupAndCutoff, BordaVotingTransformerV2
+from code_base.query_trasnformers import Dedup, BordaVotingTransformerV2
 
 # -----------------------------
 # Configuration (from constants.py)
@@ -76,7 +76,6 @@ rewrite = QueryRewriteTransformer(N_REWRITES, dataset_name=constants.DATASET_NAM
 for cutoff in C_VALUES:
     print(f"Running for cutoff={cutoff}")
 
-    dedup_topk = DedupAndCutoff(cutoff)
     dedup = Dedup()
 
     # Borda voting transformers
@@ -110,17 +109,6 @@ for cutoff in C_VALUES:
             >> mono_t5_reranker
     )
 
-    # Pipline 1.1: Dedup method with cutoff
-    pipeline_dedup_cutoff = (
-            rewrite
-            >> bm25 % cutoff
-            >> MergeRewrites()
-            >> attach_query
-            >> dedup_topk
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-    )
-
     # Pipeline 2: Borda voting method
     pipeline_borda = (
             rewrite
@@ -149,7 +137,7 @@ for cutoff in C_VALUES:
             bm25_base,
             pipeline_bm25_t5,
             pipeline_dedup,
-            pipeline_dedup_cutoff,
+
             pipeline_borda,
             pipeline_borda_weighted,
         ],
@@ -160,7 +148,7 @@ for cutoff in C_VALUES:
             "BM25",
             "BM25_MonoT5",
             "Pipeline_Dedup",
-            "Pipeline_DedupCutoff",
+
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
         ],
@@ -193,13 +181,13 @@ for cutoff in C_VALUES:
         f"cutoff={cutoff}: BM25 R@10={row_data.get('BM25_R@10', 0):.4f}, "
         f"BM25 + MonoT5 R@10={row_data.get('BM25_MonoT5_R@10', 0):.4f},"
         f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
-        f"DedupCutoff R@10={row_data.get('Pipeline_DedupCutoff_R@10', 0):.4f}, "
+
         f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
         f"BordaWeighted R@10={row_data.get('Pipeline_BordaWeighted_R@10', 0):.4f}, "
         f"BM25 NDCG@10={row_data.get('BM25_nDCG@10', 0):.4f}, "
         f"BM25 + MonoT5 NDCG@10={row_data.get('BM25_MonoT5_nDCG@10', 0):.4f}, "
         f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
-        f"DedupCutoff NDCG@10={row_data.get('Pipeline_DedupCutoff_nDCG@10', 0):.4f}, "
+
         f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
         f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}"
     )
@@ -222,7 +210,7 @@ plot_metrics(
         "BM25_R@10",
         "BM25_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
-        "Pipeline_DedupCutoff_R@10",
+
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
     ],
@@ -230,7 +218,7 @@ plot_metrics(
         "BM25 Baseline",
         "BM25 + MonoT5",
         "Dedup Method",
-        "Dedup Cutoff Method",
+
         "Borda Voting",
         "Borda Weighted",
     ],
@@ -248,7 +236,7 @@ plot_metrics(
         "BM25_nDCG@10",
         "BM25_MonoT5_nDCG@10",
         "Pipeline_Dedup_nDCG@10",
-        "Pipeline_DedupCutoff_nDCG@10",
+
         "Pipeline_Borda_nDCG@10",
         "Pipeline_BordaWeighted_nDCG@10",
     ],
@@ -256,7 +244,7 @@ plot_metrics(
         "BM25 Baseline",
         "BM25+MonoT5",
         "Dedup Method",
-        "Dedup Cutoff Method",
+
         "Borda Voting",
         "Borda Weighted",
     ],
@@ -274,7 +262,7 @@ plot_with_regression(
         "BM25_R@10",
         "BM25_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
-        "Pipeline_DedupCutoff_R@10",
+
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
     ],

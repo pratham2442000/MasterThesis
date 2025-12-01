@@ -21,7 +21,7 @@ from code_base.experiment_utils import (
     MergeRewrites,
     AttachOriginalQuery
 )
-from code_base.query_trasnformers import Dedup, DedupAndCutoff, BordaVotingTransformerV2
+from code_base.query_trasnformers import Dedup, BordaVotingTransformerV2
 import pyterrier_dr as pt_dr
 
 # -----------------------------
@@ -45,7 +45,6 @@ DENSE_MODEL_NAME = constants.DENSE_MODEL_NAME
 TOPIC_LIMIT = constants.EXPERIMENT_2_TOPIC_LIMIT
 N_REWRITES = constants.EXPERIMENT_2_N_REWRITES
 EVAL_METRICS = constants.EXPERIMENT_2_EVAL_METRICS
-C_VALUES = constants.EXPERIMENT_2_C_VALUES
 RETRIEVAL_CUTOFF = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
 
 # Reranker
@@ -115,7 +114,7 @@ attach_query = AttachOriginalQuery(QUERY_LOOKUP)
 
 for N in N_REWRITES:
     rewrite = QueryRewriteTransformer(N, dataset_name=constants.DATASET_NAME)
-    dedup_topk = DedupAndCutoff(RETRIEVAL_CUTOFF)
+
     dedup = Dedup()
 
     # Borda voting transformers
@@ -149,17 +148,6 @@ for N in N_REWRITES:
             >> mono_t5_reranker
     )
 
-    # Pipline 1.1: Dedup method with cutoff
-    pipeline_dedup_cutoff = (
-            rewrite
-            >> dense_retriever % RETRIEVAL_CUTOFF
-            >> MergeRewrites()
-            >> attach_query
-            >> dedup_topk
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-    )
-
     # Pipeline 2: Borda voting method
     pipeline_borda = (
             rewrite
@@ -188,7 +176,7 @@ for N in N_REWRITES:
             dense_base,
             pipeline_dense_t5,
             pipeline_dedup,
-            pipeline_dedup_cutoff,
+
             pipeline_borda,
             pipeline_borda_weighted,
         ],
@@ -199,7 +187,7 @@ for N in N_REWRITES:
             "Dense",
             "Dense_MonoT5",  # Changed from Dense+MonoT5 to match key naming convention
             "Pipeline_Dedup",
-            "Pipeline_DedupCutoff",
+
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
         ],
@@ -232,13 +220,13 @@ for N in N_REWRITES:
         f"n={N}: Dense R@10={row_data.get('Dense_R@10', 0):.4f}, "
         f"Dense + MonoT5 R@10={row_data.get('Dense_MonoT5_R@10', 0):.4f},"
         f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
-        f"DedupCutoff R@10={row_data.get('Pipeline_DedupCutoff_R@10', 0):.4f}, "
+
         f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
         f"BordaWeighted R@10={row_data.get('Pipeline_BordaWeighted_R@10', 0):.4f}, "
         f"Dense NDCG@10={row_data.get('Dense_nDCG@10', 0):.4f}, "
         f"Dense + MonoT5 NDCG@10={row_data.get('Dense_MonoT5_nDCG@10', 0):.4f}, "
         f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
-        f"DedupCutoff NDCG@10={row_data.get('Pipeline_DedupCutoff_nDCG@10', 0):.4f}, "
+
         f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
         f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}"
     )
@@ -261,7 +249,7 @@ plot_metrics(
         "Dense_R@10",
         "Dense_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
-        "Pipeline_DedupCutoff_R@10",
+
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
     ],
@@ -269,7 +257,7 @@ plot_metrics(
         "Dense Baseline",
         "Dense + MonoT5",
         "Dedup Method",
-        "Dedup Cutoff Method",
+
         "Borda Voting",
         "Borda Weighted",
     ],
@@ -287,7 +275,7 @@ plot_metrics(
         "Dense_nDCG@10",
         "Dense_MonoT5_nDCG@10",
         "Pipeline_Dedup_nDCG@10",
-        "Pipeline_DedupCutoff_nDCG@10",
+
         "Pipeline_Borda_nDCG@10",
         "Pipeline_BordaWeighted_nDCG@10",
     ],
@@ -295,7 +283,7 @@ plot_metrics(
         "Dense Baseline",
         "Dense+MonoT5",
         "Dedup Method",
-        "Dedup Cutoff Method",
+
         "Borda Voting",
         "Borda Weighted",
     ],
@@ -313,7 +301,7 @@ plot_with_regression(
         "Dense_R@10",
         "Dense_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
-        "Pipeline_DedupCutoff_R@10",
+
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
     ],

@@ -21,7 +21,7 @@ DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 # ==================== Experiment 1 Configuration ====================
 # Limits the number of topics (queries) used for experiment 1
 # default 1000
-EXPERIMENT_1_TOPIC_LIMIT = 500
+EXPERIMENT_1_TOPIC_LIMIT = 20
 
 # Initial Cutoff Values (c) for BM25 Retrieval in experiment 1
 # Defines the range of 'c' to experiment with
@@ -38,10 +38,6 @@ EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 15, dtype=int)]
 
 # Docs per query (or per expanded query)
 EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
-
-# Defines the range of 'c' to experiment with
-# List or single int
-EXPERIMENT_2_C_VALUES = [int(i) for i in np.linspace(10, 100, 2, dtype=int)]
 
 # ==================== Experiment 2c Configuration ====================
 # Fixed number of rewrites
