@@ -16,11 +16,9 @@ fi
 # Load miniconda module
 
 module load miniconda3
-module load openssh
-module load git
 
 
-ENV_PATH="/scratch/${USER}/.conda/envs/mt"
+ENV_PATH="/scratch/pjohari/.conda/envs/mt"
 
 if [ ! -d "$ENV_PATH" ]; then
     echo "Creating Conda environment in $ENV_PATH..."
@@ -31,25 +29,19 @@ else
 fi
 
 # Activate environment
-conda activate "$ENV_PATH"
-
+conda activate $ENV_PATH
 
 # 3. Dataset Check
 # Check default location first (local/dev)
 # Then check /home location (cluster)
 
-DEFAULT_DATA_PATH="/mnt/c/Users/prath/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
-HOME_DATA_PATH="/home/${USER}/data/2wikimultihopQA"
+HOME_DATA_PATH="/home/pjohari/data/2wikimultihopQA"
 
 if [ -d "$HOME_DATA_PATH" ]; then
     echo "Dataset found in $HOME_DATA_PATH. Setting DATA_PATH."
     export DATA_PATH="$HOME_DATA_PATH"
-elif [ -d "$DEFAULT_DATA_PATH" ]; then
-    echo "Dataset found in default path $DEFAULT_DATA_PATH."
-    # No need to export if it matches the default in constants.py, but good for explicit behavior
-    export DATA_PATH="$DEFAULT_DATA_PATH"
 else
-    echo "WARNING: Dataset not found in $HOME_DATA_PATH or $DEFAULT_DATA_PATH."
+    echo "WARNING: Dataset not found in $HOME_DATA_PATH."
 fi
 
 echo "Environment setup complete. DATA_PATH is set to: ${DATA_PATH:-Default}"
