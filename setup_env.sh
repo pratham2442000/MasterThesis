@@ -14,15 +14,13 @@ fi
 
 # 2. Conda Setup
 # Load miniconda module
-if command -v module &> /dev/null; then
-    module load miniconda3
-    module load openssh
-    module load git
-else
-    echo "Module command not found. Assuming local Conda or not on cluster."
-fi
 
-ENV_PATH="./scratch/${USER}/.conda/envs/mt"
+module load miniconda3
+module load openssh
+module load git
+
+
+ENV_PATH="/scratch/${USER}/.conda/envs/mt"
 
 if [ ! -d "$ENV_PATH" ]; then
     echo "Creating Conda environment in $ENV_PATH..."
