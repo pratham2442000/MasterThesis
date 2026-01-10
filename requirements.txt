@@ -1,15 +1,13 @@
 # --- Information Retrieval (PyTerrier Ecosystem) ---
 pyterrier
 pyterrier-adaptive
-pyterrier-alpha
 pyterrier-dr
 pyterrier-rag
 # Keeping specific git commit as requested
 pyterrier-t5 @ git+https://github.com/terrierteam/pyterrier_t5.git@77a052046ab784da9000d6f8c8d0f1b823036314
 ir_datasets
 ir_measures
-faiss-cpu
-elasticsearch
+faiss-gpu
 
 # --- Large Language Models & Agents (LangChain/OpenAI) ---
 langchain
@@ -17,7 +15,6 @@ langchain-core
 langchain-openai
 langgraph
 openai
-fschat
 
 # --- Deep Learning & NLP ---
 torch
@@ -39,11 +36,6 @@ matplotlib
 statsmodels
 networkx
 
-# --- Web & API ---
-fastapi
-uvicorn
-requests
-beautifulsoup4
 
 # --- Utilities & Notebooks ---
 tqdm

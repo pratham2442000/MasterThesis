@@ -33,8 +33,7 @@ else
 fi
 
 # Activate environment
-# Try source activate first, then conda activate
-source activate "$ENV_PATH" || conda activate "$ENV_PATH"
+conda activate "$ENV_PATH"
 
 
 # 3. Dataset Check

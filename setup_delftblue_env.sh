@@ -24,8 +24,5 @@ else
     echo "Environment already exists."
 fi
 
-# 4. Activate Environment
-echo "Activating environment..."
-source activate "$ENV_PATH"
 
 
