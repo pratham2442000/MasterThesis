@@ -164,6 +164,7 @@ for N in N_REWRITES:
         ],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
+        precompute_prefix=True
     )
 
     # Collect results for this 'N'

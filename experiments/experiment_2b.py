@@ -136,7 +136,6 @@ for N in N_REWRITES:
             bm25_base,
             pipeline_bm25_t5,
             pipeline_dedup,
-
             pipeline_borda,
             pipeline_borda_weighted,
         ],
@@ -147,12 +146,12 @@ for N in N_REWRITES:
             "BM25",
             "BM25_MonoT5",  # Changed from BM25+MonoT5 to match key naming convention
             "Pipeline_Dedup",
-
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
         ],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
+        precompute_prefix=True
     )
 
     # Collect results for this 'N'

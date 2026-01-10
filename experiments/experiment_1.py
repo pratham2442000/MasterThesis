@@ -72,6 +72,7 @@ for c in C_VALUES:
         names=["BM25", "Pipeline"],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
+        precompute_prefix=True
     )
 
     # Collect results for this 'c'

@@ -176,7 +176,6 @@ for N in N_REWRITES:
             dense_base,
             pipeline_dense_t5,
             pipeline_dedup,
-
             pipeline_borda,
             pipeline_borda_weighted,
         ],
@@ -187,12 +186,12 @@ for N in N_REWRITES:
             "Dense",
             "Dense_MonoT5",  # Changed from Dense+MonoT5 to match key naming convention
             "Pipeline_Dedup",
-
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
         ],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
+        precompute_prefix=True
     )
 
     # Collect results for this 'N'

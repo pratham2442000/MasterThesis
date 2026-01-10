@@ -1,4 +1,4 @@
-import os
+ import os
 import sys
 
 # Add parent directory to path to allow importing constants and code_base
@@ -137,7 +137,6 @@ for cutoff in C_VALUES:
             bm25_base,
             pipeline_bm25_t5,
             pipeline_dedup,
-
             pipeline_borda,
             pipeline_borda_weighted,
         ],
@@ -148,12 +147,12 @@ for cutoff in C_VALUES:
             "BM25",
             "BM25_MonoT5",
             "Pipeline_Dedup",
-
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
         ],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
+        precompute_prefix=True
     )
 
     # Collect results for this 'cutoff'
