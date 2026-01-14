@@ -101,14 +101,11 @@ def main():
         # 2. Initialize PyTerrier (Offline Config)
         # -----------------------------
         if not pt.java.started():
-            # version='5.11' prevents checking the internet for updates
-            # mem='8g' ensures enough heap space for retrieval
-            pt.java.init(version='5.11', mem='8g')
-            logging.info(f"Rank {rank}: PyTerrier initialized (Offline Mode, v5.11).")
+            pt.java.init()
+            logging.info(f"Rank {rank}: PyTerrier initialized.")
             
         index_ref = pt.IndexFactory.of(INDEX_PATH)
         
-        # This will now use the local cache because of the os.environ flags set above
         mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
         local_results_list = []
