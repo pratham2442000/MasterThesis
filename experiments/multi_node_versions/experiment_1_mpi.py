@@ -9,7 +9,6 @@ import numpy as np
 import logging
 
 # Add parent directory to path to allow importing constants and code_base
-# Assuming constants.py is in the root of the project, which is two levels up
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 import constants
@@ -22,6 +21,13 @@ from code_base.experiment_utils import (
 )
 
 def main():
+    # -----------------------------
+    # 1. Force Offline Mode for HuggingFace (T5)
+    # -----------------------------
+    # Ideally set these before importing transformers, but definitely before using them.
+    os.environ["HF_DATASETS_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
     # Initialize MPI
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -30,7 +36,6 @@ def main():
     # Configure logging
     log_filename = "experiment_1_mpi.log"
     if rank == 0:
-        # Rank 0 overwrites the file
         logging.basicConfig(
             filename=log_filename,
             level=logging.INFO,
@@ -38,9 +43,7 @@ def main():
             filemode='w'
         )
     else:
-        # Wait for Rank 0 to create the file
         comm.Barrier()
-        # Other ranks append
         logging.basicConfig(
             filename=log_filename,
             level=logging.INFO,
@@ -49,14 +52,13 @@ def main():
         )
     
     if rank == 0:
-        # Release the barrier for other ranks
         comm.Barrier()
 
     try:
         logging.info(f"Starting process. Rank {rank}/{size}")
 
         # -----------------------------
-        # Configuration (from constants.py)
+        # Configuration
         # -----------------------------
         DATA_PATH = constants.DATA_PATH
         RESULTS_PATH = constants.RESULTS_PATH
@@ -70,8 +72,6 @@ def main():
 
         DATA_SPLIT = constants.DATA_SPLIT
         INDEX_PATH = constants.INDEX_PATH
-
-        # Experiment Configuration
         TOPIC_LIMIT = constants.EXPERIMENT_1_TOPIC_LIMIT
         C_VALUES = constants.EXPERIMENT_1_C_VALUES
         if type(C_VALUES) is int:
@@ -84,16 +84,12 @@ def main():
             logging.info(f"Running on {size} MPI processes.")
             logging.info("Loading data...")
 
-        # Load data on all ranks (simplest approach for now)
-        # If memory is an issue, could load on rank 0 and scatter, but topics_df is small.
+        # Load data
         docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, DATA_SPLIT)
-        
         topics_df["query"] = topics_df["query"].apply(preprocess_query)
-        
         all_topics = topics_df[:TOPIC_LIMIT]
         
         # Distribute topics
-        # np.array_split handles uneven splits gracefully
         my_topics = np.array_split(all_topics, size)[rank]
         
         if rank == 0:
@@ -101,12 +97,18 @@ def main():
         
         logging.info(f"Rank {rank}: Processing {len(my_topics)} topics.")
 
-        # Initialize PyTerrier and components on all ranks
-        if not pt.started():
-            pt.init()
-            logging.info(f"Rank {rank}: PyTerrier initialized.")
+        # -----------------------------
+        # 2. Initialize PyTerrier (Offline Config)
+        # -----------------------------
+        if not pt.java.started():
+            # version='5.11' prevents checking the internet for updates
+            # mem='8g' ensures enough heap space for retrieval
+            pt.java.init(version='5.11', mem='8g')
+            logging.info(f"Rank {rank}: PyTerrier initialized (Offline Mode, v5.11).")
             
         index_ref = pt.IndexFactory.of(INDEX_PATH)
+        
+        # This will now use the local cache because of the os.environ flags set above
         mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
         local_results_list = []
@@ -119,11 +121,8 @@ def main():
             bm25_retrieved = bm25 % c
             pipeline = bm25_retrieved >> pt.text.get_text(index_ref, "text") >> mono_t5_reranker
 
-            # Define metrics for this iteration
             current_metrics = EVAL_METRICS + [R @ c]
 
-            # Run experiment on local topics
-            # perquery=True to get results for each query, which we can then aggregate
             if len(my_topics) > 0:
                 exp_results = pt.Experiment(
                     [bm25_retrieved, pipeline],
@@ -131,12 +130,11 @@ def main():
                     qrels_df,
                     eval_metrics=current_metrics,
                     names=["BM25", "Pipeline"],
-                    verbose=(rank == 0), # Only rank 0 prints progress bar
+                    verbose=(rank == 0),
                     batch_size=EXPERIMENT_BATCH_SIZE,
                     perquery=True,
                     precompute_prefix=True
                 )
-                # Add 'c' column to identify this run
                 exp_results['c'] = c
                 local_results_list.append(exp_results)
             else:
@@ -148,14 +146,9 @@ def main():
         if rank == 0:
             logging.info("Aggregating results...")
             
-            # Flatten the list of lists
-            # Structure: [[rank0_c1, rank0_c2], [rank1_c1, rank1_c2], ...]
-            # We want to group by 'c'
-            
             final_summary_list = []
             
             for i, c in enumerate(C_VALUES):
-                # Collect all DFs for this 'c' from all ranks
                 dfs_for_c = [rank_res[i] for rank_res in all_results_lists if not rank_res[i].empty]
                 
                 if not dfs_for_c:
@@ -164,53 +157,33 @@ def main():
                     
                 combined_df = pd.concat(dfs_for_c, ignore_index=True)
                 
-                # Calculate averages per system
-                # Group by 'name' and calculate mean of value for each measure
-                # The DF has columns: name, qid, measure, value, c
-                
-                # Pivot to get metrics as columns: name, qid, metric1, metric2...
-                # But pt.Experiment perquery format is long.
-                # Let's aggregate directly.
-                
                 summary_row = {"c": c}
-                
                 systems = combined_df['name'].unique()
                 
                 for system in systems:
                     sys_df = combined_df[combined_df['name'] == system]
-                    
-                    # Get all unique measures
                     measures = sys_df['measure'].unique()
                     
                     for measure in measures:
-                        # Calculate mean
                         mean_val = sys_df[sys_df['measure'] == measure]['value'].mean()
-                        
-                        # Format key name
-                        # Map dynamic R@c to fixed column name "R@c" for consistency
                         if measure == f"R@{c}":
                             key = f"{system}_R@c"
                         else:
                             key = f"{system}_{measure}"
-                            
                         summary_row[key] = mean_val
                 
                 final_summary_list.append(summary_row)
                 
-                # Log summary for this c
                 logging.info(
                     f"c={c}: "
                     f"BM25 R@10={summary_row.get('BM25_R@10', 0):.4f}, "
                     f"Pipeline R@10={summary_row.get('Pipeline_R@10', 0):.4f}, "
                     f"BM25 NDCG@10={summary_row.get('BM25_nDCG@10', 0):.4f}, "
-                    f"Pipeline NDCG@10={summary_row.get('Pipeline_nDCG@10', 0):.4f}, "
-                    f"BM25 R@{c}={summary_row.get('BM25_R@c', 0):.4f}, "
-                    f"Pipeline R@{c}={summary_row.get('Pipeline_R@c', 0):.4f}"
+                    f"Pipeline NDCG@10={summary_row.get('Pipeline_nDCG@10', 0):.4f}"
                 )
 
             results_df = pd.DataFrame(final_summary_list)
 
-            # Save results with metadata
             save_experiment_results(
                 results_df,
                 experiment_name="experiment_1",
@@ -219,11 +192,9 @@ def main():
             )
 
             logging.info("\nFinal Results DataFrame:")
-            # logging.info(results_df) # Logging dataframe might be messy, maybe just info that it's done.
             logging.info(results_df.to_string())
 
             # CHART GENERATION
-            # R vs. Cutoff
             plot_metrics(
                 results_df,
                 x_col="c",
@@ -236,7 +207,6 @@ def main():
                 use_log_scale=True
             )
 
-            # NDCG@10 vs. Cutoff
             plot_metrics(
                 results_df,
                 x_col="c",
@@ -250,9 +220,7 @@ def main():
                 use_log_scale=True
             )
 
-            # LINEAR REGRESSION ANALYSIS (R@10)
             logging.info("--- Linear Regression Analysis (log(c) vs R@10) ---")
-
             plot_with_regression(
                 results_df,
                 x_col="c",
@@ -268,7 +236,6 @@ def main():
 
     except Exception as e:
         logging.error(f"Rank {rank}: An error occurred: {e}", exc_info=True)
-        # Abort MPI if possible, but for now just log
         sys.exit(1)
 
 if __name__ == "__main__":
