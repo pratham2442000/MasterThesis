@@ -31,7 +31,7 @@ EXPERIMENT_1_TOPIC_LIMIT = 20
 # Initial Cutoff Values (c) for BM25 Retrieval in experiment 1
 # Defines the range of 'c' to experiment with
 # List or single int
-EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=5, dtype=int)]
+EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=int)]
 
 # ==================== Experiment 2 Configuration ====================
 # Limits the number of topics (queries) used for experiment 2
