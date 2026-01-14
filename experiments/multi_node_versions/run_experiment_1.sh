@@ -4,8 +4,8 @@
 #SBATCH --account=education-eemcs-msc-dsait
 #SBATCH --partition=compute
 #SBATCH --ntasks=4
-#SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=1GB
+#SBATCH --cpus-per-task=2
+#SBATCH --mem-per-cpu=3GB
 
 module load 2025
 module load miniconda3

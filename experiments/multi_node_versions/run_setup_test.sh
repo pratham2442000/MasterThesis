@@ -1,12 +1,13 @@
 #!/bin/sh
 
 #SBATCH --job-name=setup_test
-#SBATCH --partition=compute
 #SBATCH --account=education-eemcs-msc-dsait
 #SBATCH --time=00:10:00
+#SBATCH --partition=compute
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1GB
+
 
 
 module load miniconda3
