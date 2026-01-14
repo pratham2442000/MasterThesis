@@ -21,10 +21,10 @@ from code_base.experiment_utils import (
 )
 
 def main():
+# -----------------------------
+    # 1. Force Offline Mode
     # -----------------------------
-    # 1. Force Offline Mode for HuggingFace (T5)
-    # -----------------------------
-    # Ideally set these before importing transformers, but definitely before using them.
+    os.environ["HF_HUB_OFFLINE"] = "1" 
     os.environ["HF_DATASETS_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
@@ -35,21 +35,19 @@ def main():
 
     # Configure logging
     log_filename = "experiment_1_mpi.log"
-    if rank == 0:
-        logging.basicConfig(
-            filename=log_filename,
-            level=logging.INFO,
-            format=f'%(asctime)s - Rank {rank} - %(message)s',
-            filemode='w'
-        )
-    else:
+    # Clear log file on rank 0, append on others
+    file_mode = 'w' if rank == 0 else 'a'
+    
+    # Ensure rank 0 writes first to clear the file
+    if rank != 0:
         comm.Barrier()
-        logging.basicConfig(
-            filename=log_filename,
-            level=logging.INFO,
-            format=f'%(asctime)s - Rank {rank} - %(message)s',
-            filemode='a'
-        )
+        
+    logging.basicConfig(
+        filename=log_filename,
+        level=logging.INFO,
+        format=f'%(asctime)s - Rank {rank} - %(message)s',
+        filemode=file_mode
+    )
     
     if rank == 0:
         comm.Barrier()
@@ -74,7 +72,7 @@ def main():
         INDEX_PATH = constants.INDEX_PATH
         TOPIC_LIMIT = constants.EXPERIMENT_1_TOPIC_LIMIT
         C_VALUES = constants.EXPERIMENT_1_C_VALUES
-        if type(C_VALUES) is int:
+        if isinstance(C_VALUES, int):
             C_VALUES = [C_VALUES]
         T5_BATCH_SIZE = constants.T5_BATCH_SIZE
         EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
@@ -100,12 +98,12 @@ def main():
         # -----------------------------
         # 2. Initialize PyTerrier (Offline Config)
         # -----------------------------
-        if not pt.java.started():
-            pt.java.init()
-            logging.info(f"Rank {rank}: PyTerrier initialized.")
+        pt.init(version="5.11", helper_version="0.0.6") 
+        logging.info(f"Rank {rank}: PyTerrier initialized (Offline Mode, forced version).")
             
         index_ref = pt.IndexFactory.of(INDEX_PATH)
         
+        # Initialize T5 (Uses local cache due to os.environ flags)
         mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
         local_results_list = []
