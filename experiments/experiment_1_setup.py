@@ -1,9 +1,12 @@
 import os
 import sys
 
-import pyterrier as pt
+print("trying now to load pyterrier")
 
-# Add parent directory to path to import constants and code_base
+import pyterrier as pt
+print("pyterrier loaded")
+
+## Add parent directory to path to import constants and code_base
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from code_base.wiki_loader_pyt import wiki_loader_pyt

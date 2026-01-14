@@ -8,7 +8,7 @@ from pyterrier.measures import R, nDCG
 
 # ==================== Data Configuration ====================
 DATA_PATH = (
-    "/mnt/c/Users/prath/Documents/Uni(Tudelft)/MSc/" "MasterThesis/data/2wikimultihopQA"
+"/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
 )
 DATA_SPLIT = "test"
 DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage"
