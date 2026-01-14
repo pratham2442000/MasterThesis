@@ -59,7 +59,7 @@ def main():
         # Configuration (from constants.py)
         # -----------------------------
         DATA_PATH = constants.DATA_PATH
-        RESULTS_PATH = constants.EXPERIMENT_1_RESULTS_DIR
+        RESULTS_PATH = constants.RESULTS_PATH
         
         if rank == 0:     
             if not os.path.exists(RESULTS_PATH):
