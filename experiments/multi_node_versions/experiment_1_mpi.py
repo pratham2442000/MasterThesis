@@ -98,7 +98,7 @@ def main():
         # -----------------------------
         # 2. Initialize PyTerrier (Offline Config)
         # -----------------------------
-        pt.init(version="5.11", helper_version="0.0.6") 
+        pt.init(version="5.11", helper_version="0.0.8") 
         logging.info(f"Rank {rank}: PyTerrier initialized (Offline Mode, forced version).")
             
         index_ref = pt.IndexFactory.of(INDEX_PATH)
