@@ -33,9 +33,13 @@ def download_model(model_name, output_dir):
         print(f"Error downloading {model_name}: {e}")
 
 if __name__ == "__main__":
-    # Define model and path
-    model_name = "castorini/monot5-base-msmarco"
     base_path = "/scratch/pjohari/MasterThesis/models"
-    output_dir = os.path.join(base_path, model_name)
+    
+    models_to_download = [
+        "castorini/monot5-base-msmarco",
+        "t5-base"
+    ]
 
-    download_model(model_name, output_dir)
+    for model_name in models_to_download:
+        output_dir = os.path.join(base_path, model_name)
+        download_model(model_name, output_dir)

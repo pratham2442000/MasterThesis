@@ -108,12 +108,27 @@ def main():
         
         # Initialize T5 (Uses local cache due to os.environ flags)
         # Check for local model path first
-        local_model_path = "/scratch/pjohari/MasterThesis/models/castorini/monot5-base-msmarco"
-        if os.path.exists(local_model_path):
-            logging.info(f"Rank {rank}: Found local model at {local_model_path}. Using it.")
-            mono_t5_reranker = MonoT5ReRanker(model=local_model_path, verbose=False, batch_size=T5_BATCH_SIZE)
+        local_model_path = "/scratch/pjohari/MasterThesis/models"
+        mono_t5_model_path = os.path.join(local_model_path, "castorini/monot5-base-msmarco")
+        t5_base_path = os.path.join(local_model_path, "t5-base")
+        
+        if os.path.exists(mono_t5_model_path):
+            logging.info(f"Rank {rank}: Found local model at {mono_t5_model_path}. Using it.")
+            
+            # Check if t5-base is also available for tokenizer/config fallback
+            if os.path.exists(t5_base_path):
+                 logging.info(f"Rank {rank}: Found local t5-base at {t5_base_path}. Setting as tokenizer/config fallback.")
+                 mono_t5_reranker = MonoT5ReRanker(
+                     model=mono_t5_model_path, 
+                     tokenizer=t5_base_path,
+                     verbose=False, 
+                     batch_size=T5_BATCH_SIZE
+                 )
+            else:
+                 logging.warning(f"Rank {rank}: Local t5-base not found. Using monoT5 model path only.")
+                 mono_t5_reranker = MonoT5ReRanker(model=mono_t5_model_path, verbose=False, batch_size=T5_BATCH_SIZE)
         else:
-            logging.warning(f"Rank {rank}: Local model not found at {local_model_path}. Attempting download (will fail if offline).")
+            logging.warning(f"Rank {rank}: Local model not found at {mono_t5_model_path}. Attempting download (will fail if offline).")
             mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
         local_results_list = []
