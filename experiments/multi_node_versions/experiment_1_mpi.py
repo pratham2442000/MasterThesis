@@ -98,13 +98,23 @@ def main():
         # -----------------------------
         # 2. Initialize PyTerrier (Offline Config)
         # -----------------------------
-        pt.init(version="5.11", helper_version="0.0.8") 
+        # Fix deprecation warning by setting versions explicitly before init
+        pt.terrier.set_version("5.11")
+        pt.terrier.set_helper_version("0.0.8")
+        pt.init() 
         logging.info(f"Rank {rank}: PyTerrier initialized (Offline Mode, forced version).")
             
         index_ref = pt.IndexFactory.of(INDEX_PATH)
         
         # Initialize T5 (Uses local cache due to os.environ flags)
-        mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
+        # Check for local model path first
+        local_model_path = "/scratch/pjohari/MasterThesis/models/castorini/monot5-base-msmarco"
+        if os.path.exists(local_model_path):
+            logging.info(f"Rank {rank}: Found local model at {local_model_path}. Using it.")
+            mono_t5_reranker = MonoT5ReRanker(model=local_model_path, verbose=False, batch_size=T5_BATCH_SIZE)
+        else:
+            logging.warning(f"Rank {rank}: Local model not found at {local_model_path}. Attempting download (will fail if offline).")
+            mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
         local_results_list = []
 
