@@ -1,12 +1,13 @@
+import logging
 import os
 import sys
+
+import numpy as np
 import pandas as pd
 import pyterrier as pt
+from mpi4py import MPI
 from pyterrier.measures import R, nDCG
 from pyterrier_t5 import MonoT5ReRanker
-from mpi4py import MPI
-import numpy as np
-import logging
 
 # Add parent directory to path to allow importing constants and code_base
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -114,13 +115,12 @@ def main():
         
         if os.path.exists(mono_t5_model_path):
             logging.info(f"Rank {rank}: Found local model at {mono_t5_model_path}. Using it.")
-            
-            # Check if t5-base is also available for tokenizer/config fallback
+
             if os.path.exists(t5_base_path):
                  logging.info(f"Rank {rank}: Found local t5-base at {t5_base_path}. Setting as tokenizer/config fallback.")
                  mono_t5_reranker = MonoT5ReRanker(
-                     model=mono_t5_model_path, 
-                     tokenizer=t5_base_path,
+                     model=mono_t5_model_path,
+                     tok_model=t5_base_path,
                      verbose=False, 
                      batch_size=T5_BATCH_SIZE
                  )
