@@ -26,7 +26,7 @@ DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 # ==================== Experiment 1 Configuration ====================
 # Limits the number of topics (queries) used for experiment 1
 # default 1000
-EXPERIMENT_1_TOPIC_LIMIT = 20
+EXPERIMENT_1_TOPIC_LIMIT = 500
 
 # Initial Cutoff Values (c) for BM25 Retrieval in experiment 1
 # Defines the range of 'c' to experiment with
