@@ -142,6 +142,31 @@ class DedupAndCutoff(pt.Transformer):
         return res[res["rank"] <= self.cutoff]
 
 
+class CombMAXTransformer(pt.Transformer):
+    """
+    CombMAX identifies the maximum ranking score assigned to each document across all retrieval results.
+    This method ensures that relevant documents, even if highly ranked by only one retrieval system,
+    are not overlooked.
+    """
+
+    def __init__(self):
+        pass
+
+    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
+        if res.empty:
+            return res
+
+        # Sort by score descending so the first occurrence has the max score
+        res = res.sort_values(["qid", "docno", "score"], ascending=[True, True, False])
+        # Keep the one with the highest score
+        res = res.drop_duplicates(subset=["qid", "docno"], keep="first")
+        # Re-sort by qid and score for final ranking
+        res = res.sort_values(["qid", "score"], ascending=[True, False])
+        # Re-assign ranks
+        res["rank"] = res.groupby("qid").cumcount() + 1
+        return res
+
+
 
 # Example usage
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ from code_base.experiment_utils import (
     MergeRewrites,
     AttachOriginalQuery
 )
-from code_base.query_trasnformers import Dedup, DedupAndCutoff, BordaVotingTransformerV2
+from code_base.query_trasnformers import Dedup, DedupAndCutoff, BordaVotingTransformerV2, CombMAXTransformer
 
 # -----------------------------
 # Configuration (from constants.py)
@@ -87,6 +87,9 @@ for N in N_REWRITES:
         method="borda",
     )
 
+    # CombMAX transformer
+    comb_max = CombMAXTransformer()
+
     # Baseline BM25 on original queries
     bm25_base = bm25 % RETRIEVAL_CUTOFF
 
@@ -139,6 +142,18 @@ for N in N_REWRITES:
             >> mono_t5_reranker
     )
 
+    # Pipeline 4: Combined MAX method
+    pipeline_CombMAX = (
+            rewrite
+            >> bm25 % RETRIEVAL_CUTOFF
+            >> MergeRewrites()
+            >> attach_query
+            >> comb_max
+            >> pt.text.get_text(index_ref, "text")
+            >> mono_t5_reranker
+    )
+
+
     # Define metrics for this iteration
     current_metrics = EVAL_METRICS + [R @ RETRIEVAL_CUTOFF]
 
@@ -150,6 +165,7 @@ for N in N_REWRITES:
             pipeline_dedup_cutoff,
             pipeline_borda,
             pipeline_borda_weighted,
+            pipeline_CombMAX,
         ],
         topics,
         qrels_df,
@@ -161,6 +177,7 @@ for N in N_REWRITES:
             "Pipeline_DedupCutoff",
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
+            "Pipeline_CombMAX",
         ],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
@@ -200,7 +217,10 @@ for N in N_REWRITES:
         f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
         f"DedupCutoff NDCG@10={row_data.get('Pipeline_DedupCutoff_nDCG@10', 0):.4f}, "
         f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
-        f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}"
+
+        f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}, "
+        f"CombMAX R@10={row_data.get('Pipeline_CombMAX_R@10', 0):.4f}, "
+        f"CombMAX NDCG@10={row_data.get('Pipeline_CombMAX_nDCG@10', 0):.4f}"
     )
 
 results_df = pd.DataFrame(results_list)
@@ -224,6 +244,7 @@ plot_metrics(
         "Pipeline_DedupCutoff_R@10",
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
+        "Pipeline_CombMAX_R@10",
     ],
     labels=[
         "BM25 Baseline",
@@ -232,6 +253,7 @@ plot_metrics(
         "Dedup Cutoff Method",
         "Borda Voting",
         "Borda Weighted",
+        "CombMAX",
     ],
     title="Experiment 2: Document Combination Methods Comparison",
     xlabel="Number of Rewrites",
@@ -250,6 +272,7 @@ plot_metrics(
         "Pipeline_DedupCutoff_nDCG@10",
         "Pipeline_Borda_nDCG@10",
         "Pipeline_BordaWeighted_nDCG@10",
+        "Pipeline_CombMAX_nDCG@10",
     ],
     labels=[
         "BM25 Baseline",
@@ -258,6 +281,7 @@ plot_metrics(
         "Dedup Cutoff Method",
         "Borda Voting",
         "Borda Weighted",
+        "CombMAX",
     ],
     title="Experiment 2: Document Combination Methods Comparison (nDCG@10)",
     xlabel="Number of Rewrites",
@@ -276,6 +300,7 @@ plot_with_regression(
         "Pipeline_DedupCutoff_R@10",
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
+        "Pipeline_CombMAX_R@10",
     ],
     title="Experiment 2: R@10 vs Number of Rewrites (All Methods)",
     xlabel="Number of Rewrites",
