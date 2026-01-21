@@ -36,6 +36,9 @@ def main():
     print(f"  Topic Limit: {topic_limit}")
     api_permission = constants.REQUIRE_API_PERMISSION
     print(f"  API Permission Required: {api_permission}")
+
+    type_distribution = constants.EXPERIMENT_2_TYPE_DISTRIBUTION
+    print(f"  Type Distribution: {type_distribution}")
     print("\n" + "=" * 60 + "\n")
 
     # Load dataset
@@ -50,12 +53,13 @@ def main():
         return
 
     # Limit topics if specified
+    sample_limit = None
     if constants.EXPERIMENT_2_TOPIC_LIMIT > 0:
-        topics_df = topics_df[: constants.EXPERIMENT_2_TOPIC_LIMIT]
-        print(f"Limited to {len(topics_df)} topics for processing")
+        sample_limit = constants.EXPERIMENT_2_TOPIC_LIMIT
+        print(f"Set sample limit to {sample_limit}")
 
-    # Prepare questions list: (question, q_id) tuples
-    questions = list(zip(topics_df["query"], topics_df["qid"]))
+    # Prepare questions list: (question, q_id, type) tuples
+    questions = list(zip(topics_df["query"], topics_df["qid"], topics_df["type"]))
 
     print(f"\nPreparing to rewrite {len(questions)} queries...")
     print("This will make API calls to OpenAI.")
@@ -68,6 +72,8 @@ def main():
             split=constants.DATA_SPLIT,
             path_dt=constants.DATA_PATH,
             live=True,  # Set to False for testing without API calls
+            type_distribution=type_distribution,
+            sample_limit=sample_limit
         )
 
         print("\n" + "=" * 60)

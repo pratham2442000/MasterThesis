@@ -9,16 +9,19 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import numpy as np
-import pandas as pd
 import pyterrier as pt
 
 import constants
-from code_base.experiment_utils import preprocess_query
-from code_base.llm_q import rewrite_single_query
+from code_base.experiment_utils import (
+    QueryRewriteTransformer,
+    MergeRewrites,
+    preprocess_query,
+)
 from code_base.query_trasnformers import (
     Dedup,
     DedupAndCutoff,
     BordaVotingTransformerV2,
+    CombMAXTransformer,
 )
 from code_base.wiki_loader_pyt import wiki_loader_pyt
 
@@ -32,52 +35,10 @@ RETRIEVAL_CUTOFF = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
 
 
 # -----------------------------
-# Transformers (same as in experiment_2.py)
+# Transformers (Imported from code_base)
 # -----------------------------
-class QueryRewriteTransformer(pt.Transformer):
-    """
-    Transformer that reads preprocessed query rewrites from a dataset file.
-    Uses rewrite_single_query to get k rewrites for each query ID.
-    """
+# QueryRewriteTransformer and MergeRewrites are now imported from code_base.experiment_utils
 
-    def __init__(self, n: int, dataset_name: str = None):
-        self.n = n
-        if dataset_name is not None:
-            self.dataset_name = dataset_name
-        else:
-            self.dataset_name = constants.DATASET_NAME
-
-    def transform(self, topics_like: pd.DataFrame) -> pd.DataFrame:
-        out_rows = []
-        for _, row in topics_like.iterrows():
-            qid = row["qid"]
-            query = row["query"]
-            try:
-                rewrites = [query] + rewrite_single_query(
-                    self.dataset_name, str(qid), self.n - 1
-                )
-            except (ValueError, FileNotFoundError, KeyError) as e:
-                print(
-                    f"Warning: Could not load rewrites for qid {qid}: {e}. "
-                    "Using original query."
-                )
-                rewrites = [query] * self.n
-            for i, rw in enumerate(rewrites):
-                out_rows.append(
-                    {
-                        "qid": f"{qid}_{i}",  # unique sub-qid for each rewrite
-                        "orig_qid": qid,  # store the original qid
-                        "query": preprocess_query(rw),
-                    }
-                )
-        return pd.DataFrame(out_rows)
-
-
-class MergeRewrites(pt.Transformer):
-    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
-        # restore original qid for further dedup/ranking
-        res["qid"] = res["qid"].apply(lambda x: x.split("_")[0])
-        return res
 
 
 # -----------------------------
@@ -293,6 +254,45 @@ if len(common_docs) < 5:
 else:
     print("  -> Both methods agree on top 5")
 print()
+
+# Test 5: CombMAX Method
+# Use the same query as Test 3 for fair comparison
+print("--- Test 5: CombMAX Method ---")
+print("\n[Step 1] Creating query rewrites...")
+print(f"Original Query ID: {original_qid}")
+print(f"Original Query: {original_query}")
+print("  (Using same query as Test 3 for comparison)")
+rewrite5 = QueryRewriteTransformer(n=5).transform(test_topic)
+print(f"Number of rewrites created: {len(rewrite5)}")
+
+print("\n[Step 2] Retrieving documents for each rewrite...")
+bm25_results5 = (bm25 % RETRIEVAL_CUTOFF).transform(rewrite5)
+print(f"Total documents retrieved: {len(bm25_results5)}")
+
+print("\n[Step 3] Merging and Applying CombMAX...")
+# IMPORTANT: Must merge rewrites first so they all share the same qid (orig_qid)
+max_pipe = MergeRewrites() >> CombMAXTransformer()
+combmax_results = max_pipe.transform(bm25_results5)
+
+print(f"After CombMAX: {len(combmax_results)} documents")
+print(f"Unique queries in result: {combmax_results['qid'].nunique()}")
+print(f"Unique documents in result: {combmax_results['docno'].nunique()}")
+
+print("\n[Step 4] Final CombMAX ranking:")
+combmax_results_sorted = combmax_results.sort_values(
+    ["qid", "rank"], ascending=[True, True]
+)
+for idx, row in combmax_results_sorted.head(10).iterrows():
+    print(
+        f"  Rank {row['rank']}: docno={row['docno'][:30]}... | "
+        f"score={row['score']:.4f}"
+    )
+if len(combmax_results_sorted) > 10:
+    print(f"  ... and {len(combmax_results_sorted) - 10} more documents")
+
+max_rank_combmax = combmax_results.groupby("qid")["rank"].max().tolist()
+print(f"\nMax rank per query: {max_rank_combmax}\n")
+
 
 print("=" * 60)
 print("TESTING COMPLETE")

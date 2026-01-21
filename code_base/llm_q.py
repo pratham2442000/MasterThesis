@@ -16,6 +16,11 @@ from langchain_core.output_parsers import JsonOutputParser
 
 import constants
 
+import random
+
+random.seed(42)
+
+
 try:
     from langchain_openai import ChatOpenAI
 
@@ -245,17 +250,29 @@ def query_llm(question_text: str, k: int, live: bool = False) -> List[str]:
     return _query_llm(question_text, k, live=live, request_permission=False)
 
 
-def preprep_dataset(name: str, questions, split=None, path_dt=None, live: bool = False):
+def preprep_dataset(
+        name: str,
+        questions,
+        split=None,
+        path_dt=None,
+        live: bool = False,
+        type_distribution: dict[str, float] = None,
+        sample_limit: int = None,
+):
     """
     Preprocess a list of questions to get rewritten queries each.
     Uses constants for default configuration.
 
     Args:
         name: Dataset name
-        questions: List of (question, q_id) tuples
+        questions: List of (question, q_id) or (question, q_id, type) tuples
         split: Data split (defaults to constants.DATA_SPLIT)
         path_dt: Path to data directory (defaults to constants.DATA_PATH)
         live: If False, uses test mode without API calls
+        type_distribution: Dict mapping query type to fraction (e.g. {'comparison': 0.8, 'bridge': 0.2})
+                           If provided, questions must contain type information.
+        sample_limit: Total number of queries to sample if type_distribution is used. 
+                      If None, uses len(questions).
     """
     if split is None:
         split = constants.DATA_SPLIT
@@ -266,6 +283,50 @@ def preprep_dataset(name: str, questions, split=None, path_dt=None, live: bool =
     if live and not _request_api_permission():
         print("Dataset preprocessing cancelled by user.")
         return pd.DataFrame(columns=["q_id", "rewritten_queries"])
+
+    # Handle distribution sampling if requested
+    if type_distribution:
+
+        print(f"Applying type distribution: {type_distribution}")
+
+        # Verify questions have type info
+        if not questions or len(questions[0]) < 3:
+            print(
+                "Warning: Type distribution requested but questions tuples do not contain type info. Skipping distribution sampling.")
+        else:
+            # Group by type
+            by_type = {}
+            for q in questions:
+                q_type = q[2]
+                if q_type not in by_type:
+                    by_type[q_type] = []
+                by_type[q_type].append(q)
+
+            # Determine total sample size
+            total_count = sample_limit if sample_limit is not None else len(questions)
+
+            sampled_questions = []
+            for q_type, fraction in type_distribution.items():
+                if q_type not in by_type:
+                    print(f"Warning: Type '{q_type}' not found in questions.")
+                    continue
+
+                target_count = int(total_count * fraction)
+                available = by_type[q_type]
+
+                if len(available) < target_count:
+                    print(
+                        f"Warning: Not enough questions of type '{q_type}' (have {len(available)}, want {target_count}). Taking all.")
+                    sampled_questions.extend(available)
+                else:
+                    sampled_questions.extend(random.sample(available, target_count))
+
+            # Update questions list
+            questions = sampled_questions
+            # Shuffle to mix types
+            random.shuffle(questions)
+            print(f"Sampled {len(questions)} questions based on distribution.")
+
 
     all_rewritten = []
     n_rewrites = constants.LLM_REWRITES_PER_QUERY
@@ -281,7 +342,7 @@ def preprep_dataset(name: str, questions, split=None, path_dt=None, live: bool =
         existing_df = pd.read_csv(os.path.join(path_dt, filename))
         existing_q_ids = set(existing_df["q_id"].values)
         questions = [
-            (q, q_id) for q, q_id in questions if q_id not in existing_q_ids
+            q for q in questions if q[1] not in existing_q_ids
         ]
         all_rewritten.extend(
             zip(
@@ -294,7 +355,9 @@ def preprep_dataset(name: str, questions, split=None, path_dt=None, live: bool =
         print("No new questions to process. Returning existing dataset.")
         return pd.DataFrame(all_rewritten, columns=["q_id", "rewritten_queries"])
 
-    for question, q_id in tqdm(questions, desc="Rewriting queries"):
+    for item in tqdm(questions, desc="Rewriting queries"):
+        question = item[0]
+        q_id = item[1]
         rewritten = _query_llm(
             question, n_rewrites, live=live, request_permission=False
         )

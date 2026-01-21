@@ -36,10 +36,19 @@ EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=in
 # ==================== Experiment 2 Configuration ====================
 # Limits the number of topics (queries) used for experiment 2
 # default 1000
-EXPERIMENT_2_TOPIC_LIMIT = 500
+EXPERIMENT_2_TOPIC_LIMIT = 30
+
+# Query type distribution for dataset preparation
+# Types: compositional, comparison, bridge_comparison, inference
+EXPERIMENT_2_TYPE_DISTRIBUTION = {
+    "compositional": 0.5,
+    "comparison": 0.3,
+    "bridge_comparison": 0.1,
+    "inference": 0.1
+}
 
 # Number of rewritten queries per original query
-EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 15, dtype=int)]
+EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 5, dtype=int)]
 
 # Docs per query (or per expanded query)
 EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
