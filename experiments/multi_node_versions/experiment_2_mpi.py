@@ -227,6 +227,8 @@ def process_results(all_results_lists: List[List[pd.DataFrame]], n_values: List[
                     # Naming clean-up
                     clean_metric_name = "R@c" if metric_str == f"R@{cutoff}" else metric_str
                     row_data[f"{system}_{clean_metric_name}"] = mean_val
+                else:
+                     logging.warning(f"Metric {metric_str} not found in results for system {system} (n={N})")
 
         final_rows.append(row_data)
 
@@ -255,15 +257,33 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
     ]
 
     # 1. Recall Plot
-    plot_metrics(
-        df,
-        metric_cols=[f"{sys}_R@10" if "R@10" in df.columns else f"{sys}_R@c" for sys, _ in systems],
-        labels=[label for _, label in systems],
-        title="Experiment 2: Document Combination Methods Comparison (Recall)",
-        xlabel="Number of Rewrites",
-        filename="/n_rewrites_vs_R_comparison.png",
-        **common_args
-    )
+    # Robustly check for available columns
+    recall_metrics = []
+    recall_labels = []
+    
+    for sys, label in systems:
+        col_c = f"{sys}_R@c"
+        col_10 = f"{sys}_R@10"
+        
+        if col_c in df.columns:
+            recall_metrics.append(col_c)
+            recall_labels.append(label)
+        elif col_10 in df.columns:
+            recall_metrics.append(col_10)
+            recall_labels.append(label)
+        else:
+             logging.warning(f"Skipping Recall plot for {sys}: Neither {col_c} nor {col_10} found.")
+
+    if recall_metrics:
+        plot_metrics(
+            df,
+            metric_cols=recall_metrics,
+            labels=recall_labels,
+            title="Experiment 2: Document Combination Methods Comparison (Recall)",
+            xlabel="Number of Rewrites",
+            filename="/n_rewrites_vs_R_comparison.png",
+            **common_args
+        )
 
     # 2. NDCG Plot
     plot_metrics(
@@ -277,15 +297,18 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
     )
 
     # 3. Regression Plot
-    plot_with_regression(
-        df,
-        metric_cols=[f"{sys}_R@c" if f"{sys}_R@c" in df.columns else f"{sys}_R@10" for sys, _ in systems],
-        title="Experiment 2: R@10 vs Number of Rewrites (All Methods)",
-        xlabel="Number of Rewrites",
-        ylabel="R@10",
-        filename="/n_rewrites_vs_R_regression_all_methods.png",
-        **common_args
-    )
+    # Use the same metrics identified for the Recall plot
+    if recall_metrics:
+        plot_with_regression(
+            df,
+            metric_cols=recall_metrics, # Re-use identified valid recall columns
+            labels=recall_labels,
+            title="Experiment 2: R@10 vs Number of Rewrites (All Methods)",
+            xlabel="Number of Rewrites",
+            ylabel="R@10",
+            filename="/n_rewrites_vs_R_regression_all_methods.png",
+            **common_args
+        )
 
 
 def main():
