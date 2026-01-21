@@ -102,7 +102,7 @@ def get_pipelines(
         reranker: MonoT5ReRanker,
         query_lookup: Dict[str, str],
         cutoff: int
-) -> List[Any]:
+) -> Dict[str, Any]:
     """Constructs the list of retrieval pipelines for a specific N."""
 
     # Transformers
@@ -116,50 +116,81 @@ def get_pipelines(
     dedup_topk = DedupAndCutoff(cutoff)
     dedup = Dedup()
     borda_voting = BordaVotingTransformerV2(cutoff=cutoff, weight=None, method="borda")
-    borda_weighted = BordaVotingTransformerV2(cutoff=cutoff, weight=lambda x: np.exp(x * 0.1))
-    comb_max = CombMAXTransformer()
+    borda_weighted = BordaVotingTransformerV2(
+        cutoff=cutoff,
+        weight=lambda x: np.exp(x * 0.1),
+        method="borda"
+    )
 
-    # 1. Base BM25 + Rerank
+    # 1. BM25 Baseline
+    pipeline_bm25_base = bm25
+
+    # 2. Base BM25 + Rerank
     pipe_base = bm25 >> text_getter >> reranker
 
-    # 2. Dedup
+    # 3. Dedup
     pipe_dedup = (
-            rewrite >> bm25 >> merge_rewrites >> attach_query
-            >> dedup >> text_getter >> reranker
+            rewrite
+            >> bm25
+            >> merge_rewrites
+            >> attach_query
+            >> dedup
+            >> text_getter
+            >> reranker
     )
 
-    # 3. Dedup + Cutoff
+    # 4. Dedup + Cutoff
     pipe_dedup_cutoff = (
-            rewrite >> bm25 >> merge_rewrites >> attach_query
-            >> dedup_topk >> text_getter >> reranker
+            rewrite
+            >> bm25
+            >> merge_rewrites
+            >> attach_query
+            >> dedup_topk
+            >> text_getter
+            >> reranker
     )
 
-    # 4. Borda
+    # 5. Borda
     pipe_borda = (
-            rewrite >> bm25 >> borda_voting >> attach_query
-            >> text_getter >> reranker
+            rewrite
+            >> bm25
+            >> borda_voting
+            >> attach_query
+            >> text_getter
+            >> reranker
     )
 
-    # 5. Borda Weighted
+    # 6. Borda Weighted
+
     pipe_borda_weighted = (
-            rewrite >> bm25 >> borda_weighted >> attach_query
-            >> text_getter >> reranker
+            rewrite
+            >> bm25
+            >> borda_weighted
+            >> attach_query
+            >> text_getter
+            >> reranker
     )
 
-    # 6. CombMAX
+    # 7. CombMAX
     pipe_combmax = (
-            rewrite >> bm25 >> merge_rewrites >> attach_query
-            >> comb_max >> text_getter >> reranker
+            rewrite
+            >> bm25
+            >> merge_rewrites
+            >> attach_query
+            >> CombMAXTransformer()
+            >> text_getter
+            >> reranker
     )
 
-    return [
-        pipe_base,
-        pipe_dedup,
-        pipe_dedup_cutoff,
-        pipe_borda,
-        pipe_borda_weighted,
-        pipe_combmax
-    ]
+    return {
+        "BM25": pipeline_bm25_base,
+        "BM25_MonoT5": pipe_base,
+        "Pipeline_Dedup": pipe_dedup,
+        "Pipeline_DedupCutoff": pipe_dedup_cutoff,
+        "Pipeline_Borda": pipe_borda,
+        "Pipeline_BordaWeighted": pipe_borda_weighted,
+        "Pipeline_CombMAX": pipe_combmax
+    }
 
 
 def process_results(all_results_lists: List[List[pd.DataFrame]], n_values: List[int], metrics: List[Any],
@@ -205,6 +236,58 @@ def process_results(all_results_lists: List[List[pd.DataFrame]], n_values: List[
     return pd.DataFrame(final_rows)
 
 
+def generate_plots(df: pd.DataFrame, output_dir: str):
+    """Encapsulate plotting logic."""
+    common_args = {
+        "x_col": "n",
+        "output_dir": output_dir,
+        "use_log_scale": False
+    }
+
+    systems = [
+        ("BM25", "BM25 Baseline"),
+        ("BM25_MonoT5", "BM25 + MonoT5"),
+        ("Pipeline_Dedup", "Dedup Method"),
+        ("Pipeline_DedupCutoff", "Dedup Cutoff Method"),
+        ("Pipeline_Borda", "Borda Voting"),
+        ("Pipeline_BordaWeighted", "Borda Weighted"),
+        ("Pipeline_CombMAX", "CombMAX")
+    ]
+
+    # 1. Recall Plot
+    plot_metrics(
+        df,
+        metric_cols=[f"{sys}_R@10" if "R@10" in df.columns else f"{sys}_R@c" for sys, _ in systems],
+        labels=[label for _, label in systems],
+        title="Experiment 2: Document Combination Methods Comparison (Recall)",
+        xlabel="Number of Rewrites",
+        filename="/n_rewrites_vs_R_comparison.png",
+        **common_args
+    )
+
+    # 2. NDCG Plot
+    plot_metrics(
+        df,
+        metric_cols=[f"{sys}_nDCG@10" for sys, _ in systems],
+        labels=[label for _, label in systems],
+        title="Experiment 2: Document Combination Methods Comparison (nDCG@10)",
+        xlabel="Number of Rewrites",
+        filename="/n_rewrites_vs_nDCG_comparison.png",
+        **common_args
+    )
+
+    # 3. Regression Plot
+    plot_with_regression(
+        df,
+        metric_cols=[f"{sys}_R@c" if f"{sys}_R@c" in df.columns else f"{sys}_R@10" for sys, _ in systems],
+        title="Experiment 2: R@10 vs Number of Rewrites (All Methods)",
+        xlabel="Number of Rewrites",
+        ylabel="R@10",
+        filename="/n_rewrites_vs_R_regression_all_methods.png",
+        **common_args
+    )
+
+
 def main():
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -225,7 +308,19 @@ def main():
         # Load Dataset
         docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, constants.DATA_SPLIT)
         topics_df["query"] = topics_df["query"].apply(preprocess_query)
-        all_topics = topics_df[:constants.EXPERIMENT_2_TOPIC_LIMIT]
+
+        # Load rewritten queries
+        filename = f"{constants.DATASET_NAME}_rewritten_queries_dataset_{constants.LLM_REWRITES_PER_QUERY}_{constants.DATA_SPLIT}.csv"
+        filepath = os.path.join(constants.DATA_PATH, filename)
+
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Rewrites file not found: {filepath}")
+
+        rewritten_queries = pd.read_csv(filepath)
+
+        # Filter topics to match rewrites and apply limit
+        all_topics = topics_df[topics_df["qid"].isin(rewritten_queries["q_id"])].reset_index(drop=True)
+        all_topics = all_topics.tail(constants.EXPERIMENT_2_TOPIC_LIMIT)
 
         # Create Lookup (needed by all ranks)
         query_lookup = {str(row["qid"]): row["query"] for _, row in all_topics.iterrows()}
@@ -241,34 +336,27 @@ def main():
         # 3. Experiment Loop
         local_results_list = []
         metrics = constants.EXPERIMENT_2_EVAL_METRICS + [R @ constants.EXPERIMENT_2_RETRIEVAL_CUTOFF]
-        pipeline_names = [
-            "BM25_MonoT5", "Pipeline_Dedup", "Pipeline_DedupCutoff",
-            "Pipeline_Borda", "Pipeline_BordaWeighted", "Pipeline_CombMAX"
-        ]
 
         if rank == 0:
             logging.info(f"Starting loop for N_REWRITES: {constants.EXPERIMENT_2_N_REWRITES}")
 
         for N in constants.EXPERIMENT_2_N_REWRITES:
-            pipelines = get_pipelines(
+            systems_dict = get_pipelines(
                 N, index_ref, reranker, query_lookup,
                 constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
             )
 
             if len(my_topics) > 0:
                 exp_results = pt.Experiment(
-                    pipelines,
+                    list(systems_dict.values()),
                     my_topics,
                     qrels_df,
                     eval_metrics=metrics,
-                    names=pipeline_names,
+                    names=list(systems_dict.keys()),
                     verbose=(rank == 0),
                     batch_size=constants.EXPERIMENT_BATCH_SIZE,
                     perquery=True,
                     precompute_prefix=True
-                    # Note: baselines without rewrite dependency will be re-run here. 
-                    # If heavily optimized, you could run baseline once outside loop and merge, 
-                    # but running inside ensures dataframe alignment.
                 )
                 exp_results['n'] = N
                 local_results_list.append(exp_results)
@@ -299,29 +387,13 @@ def main():
 
             # Generate Plots
             logging.info("Generating plots...")
-            # (Plotting calls remain largely same, just ensuring correct column names)
-            plot_metrics(
-                results_df, x_col="n",
-                metric_cols=[f"{name}_R@10" for name in pipeline_names],
-                labels=pipeline_names,
-                title="Experiment 2: R@10 Comparison",
-                filename="/n_rewrites_vs_R_comparison.png",
-                output_dir=constants.RESULTS_PATH,
-            )
-
-            # Regression Plot
-            plot_with_regression(
-                results_df, x_col="n",
-                metric_cols=[f"{name}_R@10" for name in pipeline_names],
-                title="Experiment 2: R@10 Regression",
-                filename="/n_rewrites_vs_R_regression.png",
-                output_dir=constants.RESULTS_PATH,
-            )
+            generate_plots(results_df, constants.RESULTS_PATH)
 
     except Exception as e:
         logging.error(f"Rank {rank}: CRITICAL ERROR: {e}\n{traceback.format_exc()}")
         # Crucial for MPI: If one fails, kill all to prevent hanging
-        comm.Abort(1) 
+        comm.Abort(1)
+
 
 if __name__ == "__main__":
     main()

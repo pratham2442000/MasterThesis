@@ -466,6 +466,10 @@ class QueryRewriteTransformer(pt.Transformer):
             self.dataset_name = constants.DATASET_NAME
 
     def transform(self, topics_like: pd.DataFrame) -> pd.DataFrame:
+
+        if topics_like.empty:
+            return pd.DataFrame(columns=["qid", "orig_qid", "query"])
+
         out_rows = []
         for _, row in topics_like.iterrows():
             qid = row["qid"]
