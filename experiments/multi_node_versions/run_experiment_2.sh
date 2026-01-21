@@ -9,7 +9,6 @@
 #SBATCH --mem-per-cpu=4GB
 
 module load 2025
-module load miniconda3
 module load openmpi/4.1.7
 
 unset CONDA_SHLVL
