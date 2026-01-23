@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=exp2_mpi
-#SBATCH --time=03:00:00
+#SBATCH --time=05:00:00
 #SBATCH --account=education-eemcs-msc-dsait
 #SBATCH --partition=gpu
 #SBATCH --ntasks=2
