@@ -217,25 +217,19 @@ def process_results(all_results_lists: List[List[pd.DataFrame]], n_values: List[
 
         for system in systems:
             sys_df = combined_df[combined_df['name'] == system]
-
-            for metric in metrics:
-                metric_str = str(metric)
-                # Handle R@cutoff specifically for naming consistency if needed
-                if metric_str in sys_df.columns:
-                    mean_val = sys_df[metric_str].mean()
-
-                    # Naming clean-up
-                    clean_metric_name = "R@c" if metric_str == f"R@{cutoff}" else metric_str
-                    row_data[f"{system}_{clean_metric_name}"] = mean_val
+            measures = sys_df['measure'].unique()
+            for measure in measures:
+                mean_val = sys_df[sys_df['measure'] == measure]['value'].mean()
+                if measure == f"R@{cutoff}":
+                    key = f"{system}_R@c"
                 else:
-                     logging.warning(f"Metric {metric_str} not found in results for system {system} (n={N})")
-
+                    key = f"{system}_{measure}"
+                row_data[key] = mean_val
+        
         final_rows.append(row_data)
 
-        # Log quick summary
-        logging.info(f"n={N} Summary: Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}")
-
-    return pd.DataFrame(final_rows)
+    results_df = pd.DataFrame(final_rows)
+    return results_df
 
 
 def generate_plots(df: pd.DataFrame, output_dir: str):
