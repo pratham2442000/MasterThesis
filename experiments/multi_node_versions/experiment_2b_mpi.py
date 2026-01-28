@@ -314,7 +314,7 @@ def main():
         setup_environment(rank)
 
         # Results path for experiment 2b
-        RESULTS_PATH_2B = os.path.join(constants.DATA_PATH, "experiment_results/experiment_2b")
+        RESULTS_PATH_2B = constants.RESULTS_PATH
 
         if rank == 0 and not os.path.exists(RESULTS_PATH_2B):
             os.makedirs(RESULTS_PATH_2B)
