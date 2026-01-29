@@ -260,7 +260,7 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
             labels=recall_labels,
             title="Experiment 2b: Document Combination Methods Comparison (Recall)",
             xlabel="Number of Rewrites",
-            filename="/n_rewrites_vs_R_comparison.png",
+            filename="/n_rewrites_vs_R_comparison_2b.png",
             **common_args
         )
 
@@ -282,7 +282,7 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
             labels=ndcg_labels,
             title="Experiment 2b: Document Combination Methods Comparison (nDCG@10)",
             xlabel="Number of Rewrites",
-            filename="/n_rewrites_vs_nDCG_comparison.png",
+            filename="/n_rewrites_vs_nDCG_comparison_2b.png",
             **common_args
         )
 
@@ -295,7 +295,7 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
             title="Experiment 2b: R@10 vs Number of Rewrites (All Methods)",
             xlabel="Number of Rewrites",
             ylabel="R@10",
-            filename="/n_rewrites_vs_R_regression_all_methods.png",
+            filename="/n_rewrites_vs_R_regression_all_methods_2b.png",
             **common_args
         )
 
