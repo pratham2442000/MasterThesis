@@ -65,36 +65,28 @@ QUERY_LOOKUP = {str(row["qid"]): row["query"] for _, row in topics.iterrows()}
 # Dense Retrieval Setup
 # -----------------------------
 print("Setting up dense retrieval...")
-# Initialize encoder
-encoder = pt_dr.TctColBertDocumentEncoder(DENSE_MODEL_NAME)
-# Initialize query encoder (TCT-ColBERT uses the same model for queries, but wrapped differently usually,
-# but pyterrier_dr handles it via the retriever or we use TctColBertQueryEncoder)
-query_encoder = pt_dr.TctColBertQueryEncoder(DENSE_MODEL_NAME)
+
+# Initialize TCT-ColBERT model
+model = pt_dr.TctColBert(DENSE_MODEL_NAME)
 
 # Initialize Faiss Index
-# We use FaissFlat for exact search if dataset is small, or FaissHnsw for larger.
-# Given 267MB corpus, FaissFlat is fine and accurate.
-index = pt_dr.FaissFlat(DENSE_INDEX_PATH, encoder)
+# We expect the index to be created by experiment_2a_setup.py
+if not os.path.exists(os.path.join(DENSE_INDEX_PATH, "index.dpr")):
+    raise FileNotFoundError(
+        f"Dense index not found at {DENSE_INDEX_PATH}. "
+        "Please run experiments/experiment_2a_setup.py first."
+    )
 
-# Check if index exists, if not index the documents
-if not os.path.exists(os.path.join(DENSE_INDEX_PATH, "index.dpr")):  # Check for specific file created by FaissFlat
-    print("Dense index not found. Indexing documents...")
-    # Ensure docs_df has 'docno' and 'text'
-    if "docno" not in docs_df.columns or "text" not in docs_df.columns:
-        raise ValueError("docs_df must contain 'docno' and 'text' columns")
+index = pt_dr.FlexIndex(DENSE_INDEX_PATH, model.doc_encoder())
+print(f"Loaded dense index from {DENSE_INDEX_PATH}.")
 
-    index.index(docs_df)
-    print("Indexing complete.")
-else:
-    print(f"Loading dense index from {DENSE_INDEX_PATH}...")
+# Create Dense Retriever and Reranker
+dense_retriever = model.query_encoder() >> index.retriever()
+dense_reranker = model.query_encoder() >> index.scorer()
 
-# Create Dense Retriever
-
-
-dense_retriever = query_encoder >> index
-
-# We also need the sparse index for text lookup for the reranker
+# Sparse Index and Retriever for Reranking Pipeline
 index_ref = pt.IndexFactory.of(INDEX_PATH)
+sparse_retriever = pt.BatchRetrieve(index_ref, wmodel="BM25")
 
 mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
 
@@ -137,6 +129,14 @@ for N in N_REWRITES:
             >> mono_t5_reranker
     )
 
+    # Pipeline: BM25 + Dense Rerank
+    # Retrieve using BM25, then rescale using Dense scores, then re-sort
+    pipeline_bm25_dense = (
+            sparse_retriever % RETRIEVAL_CUTOFF
+            >> dense_reranker
+            >> pt.apply.generic(lambda df: df.sort_values(["qid", "score"], ascending=[True, False]))
+    )
+
     # Pipeline 1: Dedup method (original)
     pipeline_dedup = (
             rewrite
@@ -175,6 +175,7 @@ for N in N_REWRITES:
         [
             dense_base,
             pipeline_dense_t5,
+            pipeline_bm25_dense,
             pipeline_dedup,
             pipeline_borda,
             pipeline_borda_weighted,
@@ -184,7 +185,8 @@ for N in N_REWRITES:
         eval_metrics=current_metrics,
         names=[
             "Dense",
-            "Dense_MonoT5",  # Changed from Dense+MonoT5 to match key naming convention
+            "Dense_MonoT5",
+            "BM25_DenseRerank",
             "Pipeline_Dedup",
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
@@ -217,7 +219,8 @@ for N in N_REWRITES:
 
     print(
         f"n={N}: Dense R@10={row_data.get('Dense_R@10', 0):.4f}, "
-        f"Dense + MonoT5 R@10={row_data.get('Dense_MonoT5_R@10', 0):.4f},"
+        f"Dense + MonoT5 R@10={row_data.get('Dense_MonoT5_R@10', 0):.4f}, "
+        f"BM25 + Dense R@10={row_data.get('BM25_DenseRerank_R@10', 0):.4f}, "
         f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
 
         f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
@@ -247,6 +250,7 @@ plot_metrics(
     metric_cols=[
         "Dense_R@10",
         "Dense_MonoT5_R@10",
+        "BM25_DenseRerank_R@10",
         "Pipeline_Dedup_R@10",
 
         "Pipeline_Borda_R@10",
@@ -255,6 +259,7 @@ plot_metrics(
     labels=[
         "Dense Baseline",
         "Dense + MonoT5",
+        "BM25 + Dense Rerank",
         "Dedup Method",
 
         "Borda Voting",
@@ -273,6 +278,7 @@ plot_metrics(
     metric_cols=[
         "Dense_nDCG@10",
         "Dense_MonoT5_nDCG@10",
+        "BM25_DenseRerank_nDCG@10",
         "Pipeline_Dedup_nDCG@10",
 
         "Pipeline_Borda_nDCG@10",
@@ -281,6 +287,7 @@ plot_metrics(
     labels=[
         "Dense Baseline",
         "Dense+MonoT5",
+        "BM25 + Dense Rerank",
         "Dedup Method",
 
         "Borda Voting",
@@ -299,6 +306,7 @@ plot_with_regression(
     metric_cols=[
         "Dense_R@10",
         "Dense_MonoT5_R@10",
+        "BM25_DenseRerank_R@10",
         "Pipeline_Dedup_R@10",
 
         "Pipeline_Borda_R@10",
