@@ -64,11 +64,6 @@ def load_data():
     topics = topics_df[topics_df["qid"].isin(rewritten_queries["q_id"])].reset_index(drop=True)
     topics = topics.tail(constants.EXPERIMENT_2_TOPIC_LIMIT)
 
-    print(topics)
-    print(topics.info())
-    print("\n\n")
-    print(qrels_df)
-    print(qrels_df.info())
 
     # Create lookup for AttachOriginalQuery
     query_lookup = {str(row["qid"]): row["query"] for _, row in topics.iterrows()}

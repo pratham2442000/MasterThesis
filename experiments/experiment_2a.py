@@ -63,12 +63,12 @@ def load_data():
         topics = topics_df
 
     # Apply topic limit
-    topics = topics.head(constants.EXPERIMENT_2_TOPIC_LIMIT)
+    topics = topics.tail(constants.EXPERIMENT_2_TOPIC_LIMIT)
 
-    print(topics)
+    print("Topics:")
     print(topics.info())
     print("\n\n")
-    print(qrels_df)
+    print("Qrels:")
     print(qrels_df.info())
 
     # Create lookup for AttachOriginalQuery

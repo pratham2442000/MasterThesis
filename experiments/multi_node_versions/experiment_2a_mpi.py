@@ -28,7 +28,8 @@ from code_base.experiment_utils import (
 )
 from code_base.query_trasnformers import (
     Dedup,
-    BordaVotingTransformerV2
+    BordaVotingTransformerV2,
+    CombMAXTransformer
 )
 
 # -----------------------------------------------------------------------------
@@ -95,101 +96,100 @@ def load_t5_reranker(batch_size: int, rank: int) -> MonoT5ReRanker:
         return MonoT5ReRanker(verbose=False, batch_size=batch_size)
 
 
-def load_dense_retriever(rank: int):
-    """Loads the dense retrieval components."""
+def load_dense_model_and_index(rank: int):
+    """Loads the dense retrieval components (Model and Index)."""
     logging.info(f"Rank {rank}: Loading Dense Retrieval models...")
 
-    # Initialize encoder
-    encoder = pt_dr.TctColBertDocumentEncoder(constants.DENSE_MODEL_NAME)
+    # Initialize TCT-ColBERT model
+    model = pt_dr.TctColBert(constants.DENSE_MODEL_NAME)
 
-    # Initialize query encoder
-    query_encoder = pt_dr.TctColBertQueryEncoder(constants.DENSE_MODEL_NAME)
+    # Initialize FlexIndex
+    # Note: Check if we need to set absolute path validation?
+    index = pt_dr.FlexIndex(constants.DENSE_INDEX_PATH)
 
-    # Initialize Faiss Index
-    index = pt_dr.FaissFlat(constants.DENSE_INDEX_PATH, encoder)
+    logging.info(f"Rank {rank}: Loaded dense index from {constants.DENSE_INDEX_PATH}.")
 
-    # Construct retriever
-    dense_retriever = query_encoder >> index
-
-    return dense_retriever
+    return model, index
 
 
 def get_pipelines(
         n_rewrites: int,
         index_ref: Any,
-        reranker: MonoT5ReRanker,
+        mono_t5: MonoT5ReRanker,
         dense_retriever: Any,
+        dense_reranker: Any,
+        sparse_retriever: Any,
         query_lookup: Dict[str, str],
         cutoff: int
 ) -> Dict[str, Any]:
     """Constructs the list of retrieval pipelines for a specific N using Dense Retrieval."""
 
-    # Transformers
+    # Common Components
     rewrite = QueryRewriteTransformer(n_rewrites, dataset_name=constants.DATASET_NAME)
-
-    # Note: Dense retriever is passed in, we apply cutoff here
-    dense_base_retriever = dense_retriever % cutoff
-
-    text_getter = pt.text.get_text(index_ref, "text")
     attach_query = AttachOriginalQuery(query_lookup)
-    merge_rewrites = MergeRewrites()
+    get_text = pt.text.get_text(index_ref, "text")
 
-    # Pipeline Components
-    dedup = Dedup()
+    # 1. Dense Baseline
+    dense_base = dense_retriever % cutoff
+
+    # 2. Dense + MonoT5
+    pipeline_dense_t5 = dense_base >> get_text >> mono_t5
+
+    # 3. BM25 + Dense Rerank
+    pipeline_bm25_dense = (
+            sparse_retriever % cutoff
+            >> dense_reranker
+            >> pt.apply.generic(lambda df: df.sort_values(["qid", "score"], ascending=[True, False]))
+    )
+
+    # Pipeline 4: Dedup
+    p_dedup = (rewrite
+               >> dense_retriever % cutoff
+               >> MergeRewrites()
+               >> attach_query
+               >> Dedup()
+               >> get_text
+               >> mono_t5)
+
+    # Pipeline 5: Borda Voting
     borda_voting = BordaVotingTransformerV2(cutoff=cutoff, weight=None, method="borda")
+    p_borda = (rewrite
+               >> dense_retriever % cutoff
+               >> borda_voting
+               >> attach_query
+               >> get_text
+               >> mono_t5)
+
+    # Pipeline 6: Weighted Borda
     borda_weighted = BordaVotingTransformerV2(
         cutoff=cutoff,
         weight=lambda x: np.exp(x * 0.1),
         method="borda"
     )
+    p_borda_weighted = (rewrite
+                        >> dense_retriever % cutoff
+                        >> borda_weighted
+                        >> attach_query
+                        >> get_text
+                        >> mono_t5)
 
-    # 1. Dense Baseline
-    pipeline_dense_base = dense_base_retriever
-
-    # 2. Dense + MonoT5
-    pipe_dense_t5 = (
-            dense_base_retriever
-            >> text_getter
-            >> reranker
-    )
-
-    # 3. Dense + Dedup
-    pipe_dedup = (
-            rewrite
-            >> dense_base_retriever
-            >> merge_rewrites
-            >> attach_query
-            >> dedup
-            >> text_getter
-            >> reranker
-    )
-
-    # 4. Dense + Borda
-    pipe_borda = (
-            rewrite
-            >> dense_base_retriever
-            >> borda_voting
-            >> attach_query
-            >> text_getter
-            >> reranker
-    )
-
-    # 5. Dense + Borda Weighted
-    pipe_borda_weighted = (
-            rewrite
-            >> dense_base_retriever
-            >> borda_weighted
-            >> attach_query
-            >> text_getter
-            >> reranker
-    )
+    # Pipeline 7: CombMAX
+    p_combmax = (rewrite
+                 >> dense_retriever % cutoff
+                 >> MergeRewrites()
+                 >> attach_query
+                 >> CombMAXTransformer()
+                 >> get_text
+                 >> mono_t5)
 
     return {
-        "Dense": pipeline_dense_base,
-        "Dense_MonoT5": pipe_dense_t5,
-        "Pipeline_Dedup": pipe_dedup,
-        "Pipeline_Borda": pipe_borda,
-        "Pipeline_BordaWeighted": pipe_borda_weighted,
+        "Dense": dense_base,
+        "Dense_MonoT5": pipeline_dense_t5,
+        "BM25_DenseRerank": pipeline_bm25_dense,
+        "Pipeline_Dedup": p_dedup,
+        "Pipeline_Borda": p_borda,
+        "Pipeline_BordaWeighted": p_borda_weighted,
+        "Pipeline_CombMAX": p_combmax
     }
 
 
@@ -218,22 +218,34 @@ def process_results(all_results_lists: List[List[pd.DataFrame]], n_values: List[
         for system in systems:
             sys_df = combined_df[combined_df['name'] == system]
 
+            # Helper to safely get metric
+            def get_metric_mean(df, metric_key):
+                if metric_key in df.columns:
+                    return df[metric_key].mean()
+                return None
+
             for metric in metrics:
                 metric_str = str(metric)
-                # Handle R@cutoff specifically for naming consistency if needed
-                if metric_str in sys_df.columns:
-                    mean_val = sys_df[metric_str].mean()
-
-                    # Naming clean-up
-                    clean_metric_name = "R@c" if metric_str == f"R@{cutoff}" else metric_str
-                    row_data[f"{system}_{clean_metric_name}"] = mean_val
+                # Handle R@cutoff specifically for naming consistency
+                if metric_str == f"R@{cutoff}":
+                    # In pyterrier results, it's typically "R@20" string
+                    # We need to find the column that matches
+                    val = get_metric_mean(sys_df, metric_str)
+                    if val is not None:
+                        row_data[f"{system}_R@c"] = val
+                    else:
+                        logging.warning(f"Metric {metric_str} not found in results for system {system} (n={N})")
                 else:
-                    logging.warning(f"Metric {metric_str} not found in results for system {system} (n={N})")
+                    val = get_metric_mean(sys_df, metric_str)
+                    if val is not None:
+                        row_data[f"{system}_{metric_str}"] = val
+                    else:
+                        logging.warning(f"Metric {metric_str} not found in results for system {system} (n={N})")
 
         final_rows.append(row_data)
 
         # Log quick summary
-        logging.info(f"n={N} Summary: Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}")
+        logging.info(f"n={N} Summary: Dedup R@c={row_data.get('Pipeline_Dedup_R@c', 0):.4f}")
 
     return pd.DataFrame(final_rows)
 
@@ -249,39 +261,23 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
     systems = [
         ("Dense", "Dense Baseline"),
         ("Dense_MonoT5", "Dense + MonoT5"),
+        ("BM25_DenseRerank", "BM25 + Dense Rerank"),
         ("Pipeline_Dedup", "Dedup Method"),
         ("Pipeline_Borda", "Borda Voting"),
         ("Pipeline_BordaWeighted", "Borda Weighted"),
+        ("Pipeline_CombMAX", "CombMAX")
     ]
 
     # 1. Recall Plot
-    # Robustly check for available columns
-    recall_metrics = []
-    recall_labels = []
-
-    for sys, label in systems:
-        col_c = f"{sys}_R@c"
-        col_10 = f"{sys}_R@10"
-
-        if col_c in df.columns:
-            recall_metrics.append(col_c)
-            recall_labels.append(label)
-        elif col_10 in df.columns:
-            recall_metrics.append(col_10)
-            recall_labels.append(label)
-        else:
-            logging.warning(f"Skipping Recall plot for {sys}: Neither {col_c} nor {col_10} found.")
-
-    if recall_metrics:
-        plot_metrics(
-            df,
-            metric_cols=recall_metrics,
-            labels=recall_labels,
-            title="Experiment 2a: Document Combination Methods Comparison (Recall) (Dense)",
-            xlabel="Number of Rewrites",
-            filename="/n_rewrites_vs_R_comparison.png",
-            **common_args
-        )
+    plot_metrics(
+        df,
+        metric_cols=[f"{sys}_R@10" if "R@10" in df.columns else f"{sys}_R@c" for sys, _ in systems],
+        labels=[label for _, label in systems],
+        title="Experiment 2a: Document Combination Methods Comparison (Recall) (Dense)",
+        xlabel="Number of Rewrites",
+        filename="/n_rewrites_vs_R_comparison.png",
+        **common_args
+    )
 
     # 2. NDCG Plot
     plot_metrics(
@@ -295,18 +291,15 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
     )
 
     # 3. Regression Plot
-    # Use the same metrics identified for the Recall plot
-    if recall_metrics:
-        plot_with_regression(
-            df,
-            metric_cols=recall_metrics,  # Re-use identified valid recall columns
-            labels=recall_labels,
-            title="Experiment 2a: R@10 vs Number of Rewrites (All Methods) (Dense)",
-            xlabel="Number of Rewrites",
-            ylabel="R@10",
-            filename="/n_rewrites_vs_R_regression_all_methods.png",
-            **common_args
-        )
+    plot_with_regression(
+        df,
+        metric_cols=[f"{sys}_R@c" if f"{sys}_R@c" in df.columns else f"{sys}_R@10" for sys, _ in systems],
+        title="Experiment 2a: R@10 vs Number of Rewrites (All Methods) (Dense)",
+        xlabel="Number of Rewrites",
+        ylabel="R@10",
+        filename="/n_rewrites_vs_R_regression_all_methods.png",
+        **common_args
+    )
 
 
 def main():
@@ -322,12 +315,11 @@ def main():
         # 1. Environment & Data Setup
         setup_environment(rank)
 
-        if rank == 0 and not os.path.exists(constants.RESULTS_PATH + "/experiment_2a"):
-            os.makedirs(constants.RESULTS_PATH + "/experiment_2a")
-            logging.info(f"Created results dir: {constants.RESULTS_PATH}/experiment_2a")
-
-        # Override results path to specific experiment subfolder
-        RESULTS_PATH = constants.RESULTS_PATH + "/experiment_2a"
+        # Ensure results directory exists
+        RESULTS_PATH = os.path.join(constants.RESULTS_PATH, "experiment_2a")
+        if rank == 0 and not os.path.exists(RESULTS_PATH):
+            os.makedirs(RESULTS_PATH)
+            logging.info(f"Created results dir: {RESULTS_PATH}")
 
         # Load Dataset
         docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, constants.DATA_SPLIT)
@@ -344,13 +336,7 @@ def main():
 
         # Filter topics to match rewrites and apply limit
         all_topics = topics_df[topics_df["qid"].isin(rewritten_queries["q_id"])].reset_index(drop=True)
-
-        # Use Topic Limit from Constants if set, else ALL
-        if hasattr(constants, 'EXPERIMENT_2_TOPIC_LIMIT') and constants.EXPERIMENT_2_TOPIC_LIMIT:
-            all_topics = all_topics.tail(constants.EXPERIMENT_2_TOPIC_LIMIT)
-        else:
-            # Default fallback if not specified
-            pass
+        all_topics = all_topics.tail(constants.EXPERIMENT_2_TOPIC_LIMIT)
 
         # Create Lookup (needed by all ranks)
         query_lookup = {str(row["qid"]): row["query"] for _, row in all_topics.iterrows()}
@@ -360,10 +346,17 @@ def main():
         logging.info(f"Rank {rank}: Assigned {len(my_topics)} topics.")
 
         # 2. Initialize Models & Index
-        # We need the sparse index for getting text for reranker
+        # We need the sparse index for specific pipelines and get_text
         index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-        reranker = load_t5_reranker(constants.T5_BATCH_SIZE, rank)
-        dense_retriever = load_dense_retriever(rank)
+        sparse_retriever = pt.terrier.Retriever(index_ref, wmodel="BM25")
+
+        # Dense Setup
+        model, dense_index = load_dense_model_and_index(rank)
+        dense_retriever = model.query_encoder() >> dense_index.retriever()
+        dense_reranker = model.query_encoder() >> dense_index.scorer()
+
+        # Reranker
+        mono_t5 = load_t5_reranker(constants.T5_BATCH_SIZE, rank)
 
         # 3. Experiment Loop
         local_results_list = []
@@ -373,9 +366,12 @@ def main():
             logging.info(f"Starting loop for N_REWRITES: {constants.EXPERIMENT_2_N_REWRITES}")
 
         for N in constants.EXPERIMENT_2_N_REWRITES:
+            if rank == 0:
+                logging.info(f"Running pipelines for N={N}...")
+                
             systems_dict = get_pipelines(
-                N, index_ref, reranker, dense_retriever, query_lookup,
-                constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
+                N, index_ref, mono_t5, dense_retriever, dense_reranker, sparse_retriever,
+                query_lookup, constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
             )
 
             if len(my_topics) > 0:
@@ -420,6 +416,7 @@ def main():
             # Generate Plots
             logging.info("Generating plots...")
             generate_plots(results_df, RESULTS_PATH)
+            logging.info("Done.")
 
     except Exception as e:
         logging.error(f"Rank {rank}: CRITICAL ERROR: {e}\n{traceback.format_exc()}")
