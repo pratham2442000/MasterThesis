@@ -125,8 +125,6 @@ def get_pipelines(
         index_ref: Any,
         mono_t5: MonoT5ReRanker,
         dense_retriever: Any,
-        dense_reranker: Any,
-        sparse_retriever: Any,
         query_lookup: Dict[str, str],
         cutoff: int
 ) -> Dict[str, Any]:
@@ -142,13 +140,6 @@ def get_pipelines(
 
     # 2. Dense + MonoT5
     pipeline_dense_t5 = dense_base >> get_text >> mono_t5
-
-    # 3. BM25 + Dense Rerank
-    pipeline_bm25_dense = (
-            sparse_retriever % cutoff
-            >> dense_reranker
-            >> pt.apply.generic(lambda df: df.sort_values(["qid", "score"], ascending=[True, False]))
-    )
 
     # Pipeline 4: Dedup
     p_dedup = (rewrite
@@ -193,7 +184,6 @@ def get_pipelines(
     return {
         "Dense": dense_base,
         "Dense_MonoT5": pipeline_dense_t5,
-        "BM25_DenseRerank": pipeline_bm25_dense,
         "Pipeline_Dedup": p_dedup,
         "Pipeline_Borda": p_borda,
         "Pipeline_BordaWeighted": p_borda_weighted,
@@ -269,7 +259,6 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
     systems = [
         ("Dense", "Dense Baseline"),
         ("Dense_MonoT5", "Dense + MonoT5"),
-        ("BM25_DenseRerank", "BM25 + Dense Rerank"),
         ("Pipeline_Dedup", "Dedup Method"),
         ("Pipeline_Borda", "Borda Voting"),
         ("Pipeline_BordaWeighted", "Borda Weighted"),
@@ -354,9 +343,8 @@ def main():
         logging.info(f"Rank {rank}: Assigned {len(my_topics)} topics.")
 
         # 2. Initialize Models & Index
-        # We need the sparse index for specific pipelines and get_text
+        # We need the sparse index get_text
         index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-        sparse_retriever = pt.terrier.Retriever(index_ref, wmodel="BM25")
 
         # Dense Setup
         model, dense_index = load_dense_model_and_index(rank)
@@ -378,7 +366,7 @@ def main():
                 logging.info(f"Running pipelines for N={N}...")
                 
             systems_dict = get_pipelines(
-                N, index_ref, mono_t5, dense_retriever, dense_reranker, sparse_retriever,
+                N, index_ref, mono_t5, dense_retriever,
                 query_lookup, constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
             )
 
