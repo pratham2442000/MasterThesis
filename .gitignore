@@ -213,3 +213,4 @@ ORE/
 index/
 .cursor/
 TODO
+/models/*
