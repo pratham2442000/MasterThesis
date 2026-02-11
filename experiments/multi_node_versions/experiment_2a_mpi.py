@@ -100,8 +100,16 @@ def load_dense_model_and_index(rank: int):
     """Loads the dense retrieval components (Model and Index)."""
     logging.info(f"Rank {rank}: Loading Dense Retrieval models...")
 
-    # Initialize TCT-ColBERT model
-    model = pt_dr.TctColBert(constants.DENSE_MODEL_NAME)
+    # Define local path for the dense model
+    dense_model_path = os.path.join(LOCAL_MODEL_BASE, constants.DENSE_MODEL_NAME)
+
+    # Check if local model exists
+    if os.path.exists(dense_model_path):
+        logging.info(f"Rank {rank}: Loading local dense model from {dense_model_path}")
+        model = pt_dr.TctColBert(dense_model_path)
+    else:
+        logging.warning(f"Rank {rank}: Local dense model not found at {dense_model_path}. Attempting HF download.")
+        model = pt_dr.TctColBert(constants.DENSE_MODEL_NAME)
 
     # Initialize FlexIndex
     # Note: Check if we need to set absolute path validation?
