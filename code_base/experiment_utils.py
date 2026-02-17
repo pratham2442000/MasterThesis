@@ -50,13 +50,11 @@ def plot_metrics(
         xlabel: X-axis label. If None, uses x_col.
         ylabel: Y-axis label. If None, uses first metric name.
         filename: Output filename. If None, generates from metric names.
-        output_dir: Directory to save plot. If None, uses constants.DATA_PATH.
+        output_dir: Directory to save plot. If None just print the plot.
         use_log_scale: Whether to use log scale for x-axis. If None,
             auto-detects.
         figsize: Figure size tuple (width, height).
     """
-    if output_dir is None:
-        output_dir = constants.DATA_PATH
 
     if labels is None:
         labels = metric_cols
@@ -103,9 +101,14 @@ def plot_metrics(
     if not filename.startswith("/"):
         filename = "/" + filename
 
-    filepath = output_dir + filename
-    plt.savefig(filepath)
-    print(f"Chart saved as {filepath}")
+    if output_dir != None:
+        os.makedirs(output_dir, exist_ok=True)
+        filepath = output_dir + filename
+        plt.savefig(filepath)
+        print(f"Chart saved as {filepath}")
+    else:
+        print("Displaying chart...")
+        plt.show()
     plt.close()
 
 def plot_with_regression(
@@ -417,12 +420,12 @@ def find_experiment_files(
     import glob
 
     # Find CSV files
-    csv_pattern = os.path.join(output_dir, f"{experiment_name}_results*.csv")
+    csv_pattern = os.path.join(output_dir, f"{experiment_name}_results.csv")
     csv_files = glob.glob(csv_pattern)
 
     # Find metadata files
     metadata_pattern = os.path.join(
-        output_dir, f"{experiment_name}_results*_metadata.json"
+        output_dir, f"{experiment_name}_results_metadata.json"
     )
     metadata_files = glob.glob(metadata_pattern)
 

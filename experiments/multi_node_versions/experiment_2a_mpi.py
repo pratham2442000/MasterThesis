@@ -193,12 +193,13 @@ def get_pipelines(
 
 def process_results(all_results_lists: List[List[pd.DataFrame]], n_values: List[int], metrics: List[Any],
                     cutoff: int) -> pd.DataFrame:
-    """Aggregates results from all MPI ranks and calculates means."""
+    """Aggregates results from all MPI ranks and calculates means.
+    Updated to handle PyTerrier's 'Long Format' output (measure/value columns).
+    """
     final_rows = []
 
     for i, N in enumerate(n_values):
-        # Gather all dataframes for this specific N (i-th iteration) from all ranks
-        # Filter out empty dataframes (ranks that might have had 0 topics)
+        # Gather all dataframes for this specific N
         dfs_for_n = [
             rank_res[i] for rank_res in all_results_lists
             if i < len(rank_res) and not rank_res[i].empty
@@ -214,31 +215,32 @@ def process_results(all_results_lists: List[List[pd.DataFrame]], n_values: List[
         systems = combined_df['name'].unique()
 
         for system in systems:
+            # Filter for this specific system
             sys_df = combined_df[combined_df['name'] == system]
 
-            # Helper to safely get metric
-            def get_metric_mean(df, metric_key):
-                if metric_key in df.columns:
-                    return df[metric_key].mean()
-                return None
-
             for metric in metrics:
-                metric_str = str(metric)
-                # Handle R@cutoff specifically for naming consistency
-                if metric_str == f"R@{cutoff}":
-                    # In pyterrier results, it's typically "R@20" string
-                    # We need to find the column that matches
-                    val = get_metric_mean(sys_df, metric_str)
-                    if val is not None:
+                metric_str = str(metric)  # e.g., "R@10" or "nDCG@10"
+
+                # --- FIX STARTS HERE ---
+                # Check if the dataframe is in Long Format (measure/value columns)
+                if 'measure' in sys_df.columns and 'value' in sys_df.columns:
+                    # Filter rows where 'measure' matches the metric string
+                    metric_vals = sys_df[sys_df['measure'] == metric_str]['value']
+                    val = metric_vals.mean() if not metric_vals.empty else None
+                else:
+                    # Fallback for Wide Format (metrics as columns)
+                    val = sys_df[metric_str].mean() if metric_str in sys_df.columns else None
+                # --- FIX ENDS HERE ---
+
+                if val is not None:
+                    # Handle naming convention for Recall at cutoff
+                    if metric_str == f"R@{cutoff}":
                         row_data[f"{system}_R@c"] = val
                     else:
-                        logging.warning(f"Metric {metric_str} not found in results for system {system} (n={N})")
-                else:
-                    val = get_metric_mean(sys_df, metric_str)
-                    if val is not None:
                         row_data[f"{system}_{metric_str}"] = val
-                    else:
-                        logging.warning(f"Metric {metric_str} not found in results for system {system} (n={N})")
+                else:
+                    logging.warning(
+                        f"Metric {metric_str} not found for {system} (n={N}). Available measures: {sys_df['measure'].unique() if 'measure' in sys_df.columns else sys_df.columns.tolist()}")
 
         final_rows.append(row_data)
 
@@ -313,7 +315,7 @@ def main():
         setup_environment(rank)
 
         # Ensure results directory exists
-        RESULTS_PATH = os.path.join(constants.RESULTS_PATH, "experiment_2a")
+        RESULTS_PATH = os.path.join(constants.RESULTS_PATH, "exp2a")
         if rank == 0 and not os.path.exists(RESULTS_PATH):
             os.makedirs(RESULTS_PATH)
             logging.info(f"Created results dir: {RESULTS_PATH}")
