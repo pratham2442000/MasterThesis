@@ -78,8 +78,8 @@ EXPERIMENT_3_HYBRID_TOP_S = 30  # Top s docs to calculate set affinity
 EXPERIMENT_3_HYBRID_LK = 16  # Value of k for selecting k neighbourhood graph
 
 # ==================== Reranker Configuration ====================
-T5_BATCH_SIZE = 16
-EXPERIMENT_BATCH_SIZE = 10
+T5_BATCH_SIZE = 32
+EXPERIMENT_BATCH_SIZE = 20
 
 # ==================== LLM Query Rewriting Configuration ====================
 # Number of (max) rewritten queries to generate per original query
