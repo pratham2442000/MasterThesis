@@ -1,15 +1,15 @@
 import os
 import sys
 
-# Add parent directory to path to allow importing constants and code_base
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-import numpy as np
 import pandas as pd
 import pyterrier as pt
 from pyterrier.measures import R
 from pyterrier_t5 import MonoT5ReRanker
 
+# Add parent directory to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Local imports
 import constants
 from code_base import dataset_factory
 from code_base.experiment_utils import (
@@ -21,254 +21,253 @@ from code_base.experiment_utils import (
     MergeRewrites,
     AttachOriginalQuery
 )
-from code_base.query_trasnformers import Dedup, BordaVotingTransformerV2
+from code_base.query_trasnformers import Dedup, CombMAXTransformer
 
-# -----------------------------
-# Configuration (from constants.py)
-# -----------------------------
-DATA_PATH = constants.DATA_PATH
-RESULTS_PATH = DATA_PATH + "/experiment_results/experiment_2c"
+# Best n_rewrites from exp2/exp2b results
+N_REWRITES = constants.EXPERIMENT_3_BEST_N_REWRITES
 
-if os.path.exists(RESULTS_PATH):
-    print(f"Results directory {RESULTS_PATH} already exists.")
-else:
-    os.makedirs(RESULTS_PATH)
-    print(f"Created results directory at {RESULTS_PATH}.")
 
-DATA_SPLIT = constants.DATA_SPLIT
-INDEX_PATH = constants.INDEX_PATH
+# ---------------------------------------------------------
+# Setup & Configuration
+# ---------------------------------------------------------
+def setup_directories():
+    """Ensure result directories exist."""
+    results_path = constants.RESULTS_PATH + "/exp3"
+    os.makedirs(results_path, exist_ok=True)
+    print(f"Results directory ensured at: {results_path}")
+    return results_path
 
-# Experiment controls
-TOPIC_LIMIT = constants.EXPERIMENT_2_TOPIC_LIMIT
-N_REWRITES = constants.EXPERIMENT_2C_REWRITING_COUNT
-EVAL_METRICS = constants.EXPERIMENT_2_EVAL_METRICS
-C_VALUES = constants.EXPERIMENT_2C_C_VALUES
 
-# Reranker
-T5_BATCH_SIZE = constants.T5_BATCH_SIZE
-EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
-
-# -----------------------------
-# Data
-# -----------------------------
-print("Loading data...")
-docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, DATA_SPLIT)
-
-topics_df["query"] = topics_df["query"].apply(preprocess_query)
-topics = topics_df[:TOPIC_LIMIT]
-QUERY_LOOKUP = {str(row["qid"]): row["query"] for _, row in topics.iterrows()}
-
-index_ref = pt.IndexFactory.of(INDEX_PATH)
-bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
-mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
-
-# -----------------------------
-# Experiment
-# -----------------------------
-print(f"Running experiment 2c with fixed rewrites={N_REWRITES} and varying cutoff...")
-
-results_list = []
-attach_query = AttachOriginalQuery(QUERY_LOOKUP)
-
-# Fixed rewrite transformer since N is constant
-rewrite = QueryRewriteTransformer(N_REWRITES, dataset_name=constants.DATASET_NAME)
-
-for cutoff in C_VALUES:
-    print(f"Running for cutoff={cutoff}")
-
-    dedup = Dedup()
-
-    # Borda voting transformers
-    borda_voting = BordaVotingTransformerV2(
-        cutoff=cutoff, weight=None, method="borda"
-    )
-    borda_voting_weighted = BordaVotingTransformerV2(
-        cutoff=cutoff,
-        weight=lambda x: np.exp(x * 0.1),  # Exponential weighting
-        method="borda",
+def load_data():
+    """Load and preprocess dataset, topics, and qrels."""
+    print("Loading data...")
+    docs_df, topics_df, qrels_df = dataset_factory.get_dataset(
+        constants.DATASET_NAME, constants.DATA_SPLIT
     )
 
-    # Baseline BM25 on original queries
-    bm25_base = bm25 % cutoff
+    # Preprocess queries
+    topics_df["query"] = topics_df["query"].apply(preprocess_query)
 
-    # Baseline BM25 + MonoT5
-    pipeline_bm25_t5 = (
-            bm25 % cutoff
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-    )
+    # Load rewritten queries
+    filename = f"{constants.DATASET_NAME}_rewritten_queries_dataset_{constants.LLM_REWRITES_PER_QUERY}_{constants.DATA_SPLIT}.csv"
+    filepath = os.path.join(constants.DATA_PATH, filename)
 
-    # Pipeline 1: Dedup method (original)
-    pipeline_dedup = (
-            rewrite
-            >> bm25 % cutoff
-            >> MergeRewrites()
-            >> attach_query
-            >> dedup
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-    )
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"Rewrites file not found: {filepath}")
 
-    # Pipeline 2: Borda voting method
-    pipeline_borda = (
-            rewrite
-            >> bm25 % cutoff
-            >> borda_voting
-            >> attach_query
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-    )
+    rewritten_queries = pd.read_csv(filepath)
 
-    # Pipeline 3: Borda voting with weighted scores
-    pipeline_borda_weighted = (
-            rewrite
-            >> bm25 % cutoff
-            >> borda_voting_weighted
-            >> attach_query
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-    )
+    # Filter topics to match rewrites and apply limit
+    topics = topics_df[topics_df["qid"].isin(rewritten_queries["q_id"])].reset_index(drop=True)
+    topics = topics.tail(constants.EXPERIMENT_3_TOPIC_LIMIT)
 
-    # Define metrics for this iteration
-    current_metrics = EVAL_METRICS + [R @ cutoff]
+    # Create lookup for AttachOriginalQuery
+    query_lookup = {str(row["qid"]): row["query"] for _, row in topics.iterrows()}
 
-    experiment_results = pt.Experiment(
-        [
-            bm25_base,
-            pipeline_bm25_t5,
-            pipeline_dedup,
-            pipeline_borda,
-            pipeline_borda_weighted,
-        ],
-        topics,
-        qrels_df,
-        eval_metrics=current_metrics,
-        names=[
-            "BM25",
-            "BM25_MonoT5",
-            "Pipeline_Dedup",
-            "Pipeline_Borda",
-            "Pipeline_BordaWeighted",
-        ],
-        verbose=True,
-        batch_size=EXPERIMENT_BATCH_SIZE,
-        precompute_prefix=True
-    )
+    return topics, qrels_df, query_lookup
 
-    # Collect results for this 'cutoff'
-    row_data = {"cutoff": cutoff}
 
-    for _, exp_row in experiment_results.iterrows():
-        system_name = exp_row["name"]
-        for metric in current_metrics:
-            metric_str = str(metric)
-            val = exp_row[metric_str]
+# ---------------------------------------------------------
+# Pipeline Definitions
+# ---------------------------------------------------------
+def get_pipelines(cutoff, index_ref, reranker, query_lookup):
+    """
+    Constructs the dictionary of pipelines for a specific cutoff value.
+    Uses fixed N_REWRITES=10 (best from exp2/exp2b results).
+    """
 
-            # Map dynamic R@c to fixed column name "R@c" for consistency
-            if metric_str == f"R@{cutoff}":
-                key = f"{system_name}_R@c"
-            else:
-                key = f"{system_name}_{metric_str}"
+    # Common Components
+    rewrite = QueryRewriteTransformer(N_REWRITES, dataset_name=constants.DATASET_NAME)
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
+    attach_query = AttachOriginalQuery(query_lookup)
+    get_text = pt.text.get_text(index_ref, "text")
 
-            row_data[key] = val
+    # Baselines
+    pipeline_bm25_base = bm25
+    pipeline_bm25_t5 = bm25 >> get_text >> reranker
 
-    results_list.append(row_data)
+    # --- Merge-then-Rerank pipelines ---
 
-    print("\n\n")
+    # Pipeline 1: Dedup (merge-then-rerank)
+    p_dedup = (rewrite
+               >> bm25
+               >> MergeRewrites()
+               >> attach_query
+               >> Dedup()
+               >> get_text
+               >> reranker)
+
+    # Pipeline 2: CombMAX (merge-then-rerank) — best fusion from exp2
+    p_combmax = (rewrite
+                 >> bm25
+                 >> MergeRewrites()
+                 >> attach_query
+                 >> CombMAXTransformer()
+                 >> get_text
+                 >> reranker)
+
+    # --- Rerank-then-Merge pipelines (from exp2b, best overall nDCG) ---
+
+    # Pipeline 3: Dedup RTM (rerank-then-merge)
+    p_dedup_rtm = (rewrite
+                   >> bm25
+                   >> get_text
+                   >> reranker
+                   >> MergeRewrites()
+                   >> Dedup())
+
+    # Pipeline 4: CombMAX RTM (rerank-then-merge)
+    p_combmax_rtm = (rewrite
+                     >> bm25
+                     >> get_text
+                     >> reranker
+                     >> MergeRewrites()
+                     >> CombMAXTransformer())
+
+    return {
+        "BM25": pipeline_bm25_base,
+        "BM25_MonoT5": pipeline_bm25_t5,
+        "Dedup": p_dedup,
+        "CombMAX": p_combmax,
+        "Dedup_RTM": p_dedup_rtm,
+        "CombMAX_RTM": p_combmax_rtm,
+    }
+
+
+# ---------------------------------------------------------
+# Main Execution
+# ---------------------------------------------------------
+def main():
+    # 1. Setup
+    results_path = setup_directories()
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+
+    # Initialize Reranker once
+    mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
+
+    # 2. Data
+    topics, qrels, query_lookup = load_data()
+
+    # 3. Experiment Loop
+    all_results = []
+    c_values = constants.EXPERIMENT_3_C_VALUES
 
     print(
-        f"cutoff={cutoff}: BM25 R@10={row_data.get('BM25_R@10', 0):.4f}, "
-        f"BM25 + MonoT5 R@10={row_data.get('BM25_MonoT5_R@10', 0):.4f},"
-        f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
+        f"Starting experiment 3 with fixed n_rewrites={N_REWRITES}, varying cutoff={c_values}... topics={len(topics)}")
 
-        f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
-        f"BordaWeighted R@10={row_data.get('Pipeline_BordaWeighted_R@10', 0):.4f}, "
-        f"BM25 NDCG@10={row_data.get('BM25_nDCG@10', 0):.4f}, "
-        f"BM25 + MonoT5 NDCG@10={row_data.get('BM25_MonoT5_nDCG@10', 0):.4f}, "
-        f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
+    for cutoff in c_values:
+        print(f"Running pipeline for cutoff={cutoff}...")
 
-        f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
-        f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}"
+        # Define metrics for this cutoff
+        eval_metrics = constants.EXPERIMENT_3_EVAL_METRICS + [R @ cutoff]
+
+        # Define systems
+        systems_dict = get_pipelines(cutoff, index_ref, mono_t5, query_lookup)
+
+        # Run Experiment
+        exp_df = pt.Experiment(
+            list(systems_dict.values()),
+            topics,
+            qrels,
+            eval_metrics=eval_metrics,
+            names=list(systems_dict.keys()),
+            verbose=True,
+            batch_size=constants.EXPERIMENT_BATCH_SIZE,
+            precompute_prefix=True
+        )
+
+        # Post-process: collect results
+        exp_df['cutoff'] = cutoff
+        print(exp_df)
+        row_data = {"cutoff": cutoff}
+        for _, row in exp_df.iterrows():
+            system_name = row['name']
+            for metric in eval_metrics:
+                metric_str = str(metric)
+                val = row[metric_str]
+
+                # Standardize metric string for CSV column headers
+                if metric_str == f"R@{cutoff}":
+                    key = f"{system_name}_R@c"
+                else:
+                    key = f"{system_name}_{metric_str}"
+
+                row_data[key] = val
+
+        print("\n")
+        print(f"Experiment for cutoff={cutoff} complete. Results head:")
+        print(row_data)
+        print("\n")
+
+        all_results.append(row_data)
+
+    # 4. Save and Visualize
+    results_df = pd.DataFrame(all_results)
+
+    print("\nExperiment Complete. Results head:")
+    print(results_df.head())
+
+    save_experiment_results(
+        results_df,
+        experiment_name="experiment_3",
+        output_dir=results_path,
+        filename="experiment_3_results",
     )
 
-results_df = pd.DataFrame(results_list)
+    # Generate Plots
+    generate_plots(results_df, results_path)
 
-save_experiment_results(
-    results_df,
-    experiment_name="experiment_2c",
-    output_dir=RESULTS_PATH,
-    filename="experiment_2c_results",
-)
 
-print(results_df)
+def generate_plots(df, output_dir):
+    """Encapsulate plotting logic."""
+    common_args = {
+        "x_col": "cutoff",
+        "output_dir": output_dir,
+        "use_log_scale": True
+    }
 
-plot_metrics(
-    results_df,
-    x_col="cutoff",
-    metric_cols=[
-        "BM25_R@10",
-        "BM25_MonoT5_R@10",
-        "Pipeline_Dedup_R@10",
+    systems = [
+        ("BM25", "BM25 Baseline"),
+        ("BM25_MonoT5", "BM25 + MonoT5"),
+        ("Dedup", "Dedup (Merge→Rerank)"),
+        ("CombMAX", "CombMAX (Merge→Rerank)"),
+        ("Dedup_RTM", "Dedup (Rerank→Merge)"),
+        ("CombMAX_RTM", "CombMAX (Rerank→Merge)"),
+    ]
 
-        "Pipeline_Borda_R@10",
-        "Pipeline_BordaWeighted_R@10",
-    ],
-    labels=[
-        "BM25 Baseline",
-        "BM25 + MonoT5",
-        "Dedup Method",
+    # 1. Recall Plot
+    plot_metrics(
+        df,
+        metric_cols=[f"{sys}_R@10" if f"{sys}_R@10" in df.columns else f"{sys}_R@c" for sys, _ in systems],
+        labels=[label for _, label in systems],
+        title="Experiment 3: Effect of Cutoff on R@10 (n_rewrites=10)",
+        xlabel="Retrieval Cutoff",
+        filename="/cutoff_vs_R_comparison.png",
+        **common_args
+    )
 
-        "Borda Voting",
-        "Borda Weighted",
-    ],
-    title="Experiment 2c: Document Combination Methods Comparison (Varying Cutoff)",
-    xlabel="Retrieval Cutoff",
-    filename="/cutoff_vs_R_comparison.png",
-    use_log_scale=True,
-    output_dir=RESULTS_PATH,
-)
+    # 2. NDCG Plot
+    plot_metrics(
+        df,
+        metric_cols=[f"{sys}_nDCG@10" for sys, _ in systems],
+        labels=[label for _, label in systems],
+        title="Experiment 3: Effect of Cutoff on nDCG@10 (n_rewrites=10)",
+        xlabel="Retrieval Cutoff",
+        filename="/cutoff_vs_nDCG_comparison.png",
+        **common_args
+    )
 
-plot_metrics(
-    results_df,
-    x_col="cutoff",
-    metric_cols=[
-        "BM25_nDCG@10",
-        "BM25_MonoT5_nDCG@10",
-        "Pipeline_Dedup_nDCG@10",
+    # 3. Regression Plot
+    plot_with_regression(
+        df,
+        metric_cols=[f"{sys}_R@c" if f"{sys}_R@c" in df.columns else f"{sys}_R@10" for sys, _ in systems],
+        title="Experiment 3: R@10 vs Cutoff Regression (n_rewrites=10)",
+        xlabel="Retrieval Cutoff",
+        ylabel="R@10",
+        filename="/cutoff_vs_R_regression_all_methods.png",
+        **common_args
+    )
 
-        "Pipeline_Borda_nDCG@10",
-        "Pipeline_BordaWeighted_nDCG@10",
-    ],
-    labels=[
-        "BM25 Baseline",
-        "BM25+MonoT5",
-        "Dedup Method",
 
-        "Borda Voting",
-        "Borda Weighted",
-    ],
-    title="Experiment 2c: Document Combination Methods Comparison (nDCG@10)",
-    xlabel="Retrieval Cutoff",
-    filename="/cutoff_vs_nDCG_comparison.png",
-    use_log_scale=True,
-    output_dir=RESULTS_PATH,
-)
-
-plot_with_regression(
-    results_df,
-    x_col="cutoff",
-    metric_cols=[
-        "BM25_R@10",
-        "BM25_MonoT5_R@10",
-        "Pipeline_Dedup_R@10",
-
-        "Pipeline_Borda_R@10",
-        "Pipeline_BordaWeighted_R@10",
-    ],
-    title="Experiment 2c: R@10 vs Retrieval Cutoff (All Methods)",
-    xlabel="Retrieval Cutoff",
-    ylabel="R@10",
-    filename="/cutoff_vs_R_regression_all_methods.png",
-    use_log_scale=True,
-    output_dir=RESULTS_PATH,
-)
+if __name__ == "__main__":
+    main()

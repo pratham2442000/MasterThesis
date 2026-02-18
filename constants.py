@@ -66,20 +66,15 @@ EXPERIMENT_2C_C_VALUES = EXPERIMENT_1_C_VALUES
 # default 1000
 EXPERIMENT_3_TOPIC_LIMIT = 500
 
-# Number of rewritten queries per original query
-EXPERIMENT_3_N_REWRITES = [int(i) for i in np.linspace(1, 30, 15, dtype=int)]
+# Fixed number of rewrites (best value from exp2/exp2b results)
+EXPERIMENT_3_BEST_N_REWRITES = 10
 
-# Docs per query (or per expanded query)
-EXPERIMENT_3_RETRIEVAL_CUTOFF = 20
-
-# Hybrid pipeline parameters
-EXPERIMENT_3_HYBRID_CROSS_ENC_BUDGET = 7  # Number of cross-encoder calls
-EXPERIMENT_3_HYBRID_TOP_S = 30  # Top s docs to calculate set affinity
-EXPERIMENT_3_HYBRID_LK = 16  # Value of k for selecting k neighbourhood graph
+# Range of cutoff values to vary (reuses Experiment 1 values)
+EXPERIMENT_3_C_VALUES = EXPERIMENT_1_C_VALUES
 
 # ==================== Reranker Configuration ====================
-T5_BATCH_SIZE = 32
-EXPERIMENT_BATCH_SIZE = 20
+T5_BATCH_SIZE = 16
+EXPERIMENT_BATCH_SIZE = 10
 
 # ==================== LLM Query Rewriting Configuration ====================
 # Number of (max) rewritten queries to generate per original query
