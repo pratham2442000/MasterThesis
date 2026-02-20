@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=exp3_mpi
-#SBATCH --time=05:00:00
+#SBATCH --time=15:00:00
 #SBATCH --account=education-eemcs-msc-dsait
 #SBATCH --partition=gpu
 #SBATCH --ntasks=2
-#SBATCH --cpus-per-task=2
+#SBATCH --cpus-per-task=4
 #SBATCH --gpus-per-task=1
 #SBATCH --mem-per-cpu=4GB
 

@@ -31,7 +31,7 @@ EXPERIMENT_1_TOPIC_LIMIT = 500
 # Initial Cutoff Values (c) for BM25 Retrieval in experiment 1
 # Defines the range of 'c' to experiment with
 # List or single int
-EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=int)]
+EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 500, num=10, dtype=int)]
 
 # ==================== Experiment 2 Configuration ====================
 # Limits the number of topics (queries) used for experiment 2
@@ -70,7 +70,7 @@ EXPERIMENT_3_TOPIC_LIMIT = 500
 EXPERIMENT_3_BEST_N_REWRITES = 10
 
 # Range of cutoff values to vary (reuses Experiment 1 values)
-EXPERIMENT_3_C_VALUES = EXPERIMENT_1_C_VALUES
+EXPERIMENT_3_C_VALUES = [int(i) for i in np.geomspace(10, 100, num=10, dtype=int)]
 
 # ==================== Reranker Configuration ====================
 T5_BATCH_SIZE = 16
