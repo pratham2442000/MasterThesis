@@ -104,7 +104,7 @@ def plot_metrics(
     if output_dir != None:
         os.makedirs(output_dir, exist_ok=True)
         filepath = output_dir + filename
-        plt.savefig(filepath)
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
         print(f"Chart saved as {filepath}")
     else:
         print("Displaying chart...")
@@ -165,6 +165,7 @@ def plot_with_regression(
     regression_stats = {}
     for metric_col, label in zip(metric_cols, labels):
         y = df[metric_col]
+        print(x_regression, y)
         slope, intercept, r_value, p_value, std_err = linregress(x_regression, y)
         r_squared = r_value ** 2
 
@@ -253,7 +254,7 @@ def plot_with_regression(
         filename = "/" + filename
 
     filepath = output_dir + filename
-    plt.savefig(filepath)
+    plt.savefig(filepath, dpi=150, bbox_inches='tight')
     print(f"Chart saved as {filepath}")
     plt.close()
 

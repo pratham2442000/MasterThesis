@@ -22,6 +22,7 @@ from code_base.query_trasnformers import (
     DedupAndCutoff,
     BordaVotingTransformerV2,
     CombMAXTransformer,
+    RRFTransformer,
 )
 from code_base.wiki_loader_pyt import wiki_loader_pyt
 
@@ -292,6 +293,45 @@ if len(combmax_results_sorted) > 10:
 
 max_rank_combmax = combmax_results.groupby("qid")["rank"].max().tolist()
 print(f"\nMax rank per query: {max_rank_combmax}\n")
+
+# Test 6: RRF Method
+print("--- Test 6: RRF (Reciprocal Rank Fusion) Method ---")
+print("\n[Step 1] Using same rewrites and BM25 results as Test 5...")
+print(f"Original Query ID: {original_qid}")
+print(f"Original Query: {original_query}")
+
+print("\n[Step 2] Merging and Applying RRF...")
+rrf_pipe = MergeRewrites() >> RRFTransformer()
+rrf_results = rrf_pipe.transform(bm25_results5)
+
+print(f"After RRF: {len(rrf_results)} documents")
+print(f"Unique queries in result: {rrf_results['qid'].nunique()}")
+print(f"Unique documents in result: {rrf_results['docno'].nunique()}")
+
+print("\n[Step 3] Final RRF ranking:")
+rrf_results_sorted = rrf_results.sort_values(
+    ["qid", "rank"], ascending=[True, True]
+)
+for idx, row in rrf_results_sorted.head(10).iterrows():
+    print(
+        f"  Rank {row['rank']}: docno={row['docno'][:30]}... | "
+        f"score={row['score']:.6f}"
+    )
+if len(rrf_results_sorted) > 10:
+    print(f"  ... and {len(rrf_results_sorted) - 10} more documents")
+
+max_rank_rrf = rrf_results.groupby("qid")["rank"].max().tolist()
+print(f"\nMax rank per query: {max_rank_rrf}")
+
+# Compare RRF vs CombMAX
+print("\n[Step 4] Comparing RRF vs CombMAX:")
+top_combmax = combmax_results_sorted.head(5)['docno'].tolist()
+top_rrf = rrf_results_sorted.head(5)['docno'].tolist()
+print(f"  CombMAX Top 5: {[d[:25] + '...' for d in top_combmax]}")
+print(f"  RRF Top 5:     {[d[:25] + '...' for d in top_rrf]}")
+overlap = len(set(top_combmax).intersection(set(top_rrf)))
+print(f"  Overlap: {overlap}/5 documents")
+print()
 
 
 print("=" * 60)

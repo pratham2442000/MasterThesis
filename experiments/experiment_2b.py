@@ -21,7 +21,7 @@ from code_base.experiment_utils import (
     MergeRewrites,
     AttachOriginalQuery
 )
-from code_base.query_trasnformers import Dedup, BordaVotingTransformerV2
+from code_base.query_trasnformers import Dedup, BordaVotingTransformerV2, CombMAXTransformer, RRFTransformer
 
 # -----------------------------
 # Configuration (from constants.py)
@@ -128,6 +128,26 @@ for N in N_REWRITES:
             >> borda_voting_weighted
     )
 
+    # Pipeline 4: CombMAX (Rerank EACH rewrite, then CombMAX merge)
+    pipeline_combmax = (
+            rewrite
+            >> bm25 % RETRIEVAL_CUTOFF
+            >> pt.text.get_text(index_ref, "text")
+            >> mono_t5_reranker
+            >> MergeRewrites()
+            >> CombMAXTransformer()
+    )
+
+    # Pipeline 5: RRF (Rerank EACH rewrite, then RRF merge)
+    pipeline_rrf = (
+            rewrite
+            >> bm25 % RETRIEVAL_CUTOFF
+            >> pt.text.get_text(index_ref, "text")
+            >> mono_t5_reranker
+            >> MergeRewrites()
+            >> RRFTransformer()
+    )
+
     # Define metrics for this iteration
     current_metrics = EVAL_METRICS + [R @ RETRIEVAL_CUTOFF]
 
@@ -138,16 +158,20 @@ for N in N_REWRITES:
             pipeline_dedup,
             pipeline_borda,
             pipeline_borda_weighted,
+            pipeline_combmax,
+            pipeline_rrf,
         ],
         topics,
         qrels_df,
         eval_metrics=current_metrics,
         names=[
             "BM25",
-            "BM25_MonoT5",  # Changed from BM25+MonoT5 to match key naming convention
+            "BM25_MonoT5",
             "Pipeline_Dedup",
             "Pipeline_Borda",
             "Pipeline_BordaWeighted",
+            "Pipeline_CombMAX",
+            "Pipeline_RRF",
         ],
         verbose=True,
         batch_size=EXPERIMENT_BATCH_SIZE,
@@ -179,15 +203,17 @@ for N in N_REWRITES:
         f"n={N}: BM25 R@10={row_data.get('BM25_R@10', 0):.4f}, "
         f"BM25 + MonoT5 R@10={row_data.get('BM25_MonoT5_R@10', 0):.4f},"
         f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
-
         f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
         f"BordaWeighted R@10={row_data.get('Pipeline_BordaWeighted_R@10', 0):.4f}, "
+        f"CombMAX R@10={row_data.get('Pipeline_CombMAX_R@10', 0):.4f}, "
+        f"RRF R@10={row_data.get('Pipeline_RRF_R@10', 0):.4f}, "
         f"BM25 NDCG@10={row_data.get('BM25_nDCG@10', 0):.4f}, "
         f"BM25 + MonoT5 NDCG@10={row_data.get('BM25_MonoT5_nDCG@10', 0):.4f}, "
         f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
-
         f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
-        f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}"
+        f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}, "
+        f"CombMAX NDCG@10={row_data.get('Pipeline_CombMAX_nDCG@10', 0):.4f}, "
+        f"RRF NDCG@10={row_data.get('Pipeline_RRF_nDCG@10', 0):.4f}"
     )
 
 results_df = pd.DataFrame(results_list)
@@ -208,17 +234,19 @@ plot_metrics(
         "BM25_R@10",
         "BM25_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
-
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
+        "Pipeline_CombMAX_R@10",
+        "Pipeline_RRF_R@10",
     ],
     labels=[
         "BM25 Baseline",
         "BM25 + MonoT5",
         "Dedup Method",
-
         "Borda Voting",
         "Borda Weighted",
+        "CombMAX",
+        "RRF",
     ],
     title="Experiment 2b: Document Combination Methods Comparison (Rerank First)",
     xlabel="Number of Rewrites",
@@ -234,17 +262,19 @@ plot_metrics(
         "BM25_nDCG@10",
         "BM25_MonoT5_nDCG@10",
         "Pipeline_Dedup_nDCG@10",
-
         "Pipeline_Borda_nDCG@10",
         "Pipeline_BordaWeighted_nDCG@10",
+        "Pipeline_CombMAX_nDCG@10",
+        "Pipeline_RRF_nDCG@10",
     ],
     labels=[
         "BM25 Baseline",
         "BM25+MonoT5",
         "Dedup Method",
-
         "Borda Voting",
         "Borda Weighted",
+        "CombMAX",
+        "RRF",
     ],
     title="Experiment 2b: Document Combination Methods Comparison (nDCG@10)",
     xlabel="Number of Rewrites",
@@ -260,9 +290,10 @@ plot_with_regression(
         "BM25_R@10",
         "BM25_MonoT5_R@10",
         "Pipeline_Dedup_R@10",
-
         "Pipeline_Borda_R@10",
         "Pipeline_BordaWeighted_R@10",
+        "Pipeline_CombMAX_R@10",
+        "Pipeline_RRF_R@10",
     ],
     title="Experiment 2b: R@10 vs Number of Rewrites (All Methods)",
     xlabel="Number of Rewrites",

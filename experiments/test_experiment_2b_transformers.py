@@ -20,6 +20,7 @@ from code_base.experiment_utils import (
 from code_base.query_trasnformers import (
     Dedup,
     BordaVotingTransformerV2,
+    RRFTransformer,
 )
 from code_base.wiki_loader_pyt import wiki_loader_pyt
 
@@ -201,6 +202,24 @@ print(f"Borda Top 5: {top_borda}")
 
 overlap = len(set(top_dedup).intersection(set(top_borda)))
 print(f"Overlap: {overlap}/5 documents.")
+
+# -----------------------------
+# Test 5: Pipeline RRF (Rerank -> Merge -> RRF)
+# -----------------------------
+print("\n--- Phase 6: Pipeline RRF (Rerank -> Merge -> RRF) ---")
+rrf_pipe = MergeRewrites() >> RRFTransformer()
+rrf_res = rrf_pipe.transform(reranked)
+
+print(f"RRF Result Count: {len(rrf_res)}")
+print(f"Top 3 RRF Results:")
+print(rrf_res.sort_values('score', ascending=False).head(3)[['docno', 'score', 'rank']])
+
+# Compare RRF vs others
+top_rrf = rrf_res.sort_values('score', ascending=False).head(5)['docno'].tolist()
+print(f"\n--- Final Comparison ---")
+print(f"Dedup Top 5: {top_dedup}")
+print(f"Borda Top 5: {top_borda}")
+print(f"RRF Top 5:   {top_rrf}")
 
 print("\n" + "=" * 60)
 print("TEST EXPERIMENT 2B COMPLETE")

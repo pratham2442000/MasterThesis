@@ -29,7 +29,8 @@ from code_base.query_trasnformers import (
     Dedup,
     DedupAndCutoff,
     BordaVotingTransformerV2,
-    CombMAXTransformer
+    CombMAXTransformer,
+    RRFTransformer
 )
 
 # -----------------------------------------------------------------------------
@@ -182,6 +183,17 @@ def get_pipelines(
             >> reranker
     )
 
+    # 8. RRF (Reciprocal Rank Fusion)
+    pipe_rrf = (
+            rewrite
+            >> bm25
+            >> merge_rewrites
+            >> attach_query
+            >> RRFTransformer()
+            >> text_getter
+            >> reranker
+    )
+
     return {
         "BM25": pipeline_bm25_base,
         "BM25_MonoT5": pipe_base,
@@ -189,7 +201,8 @@ def get_pipelines(
         "Pipeline_DedupCutoff": pipe_dedup_cutoff,
         "Pipeline_Borda": pipe_borda,
         "Pipeline_BordaWeighted": pipe_borda_weighted,
-        "Pipeline_CombMAX": pipe_combmax
+        "Pipeline_CombMAX": pipe_combmax,
+        "Pipeline_RRF": pipe_rrf
     }
 
 
@@ -247,7 +260,8 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
         ("Pipeline_DedupCutoff", "Dedup Cutoff Method"),
         ("Pipeline_Borda", "Borda Voting"),
         ("Pipeline_BordaWeighted", "Borda Weighted"),
-        ("Pipeline_CombMAX", "CombMAX")
+        ("Pipeline_CombMAX", "CombMAX"),
+        ("Pipeline_RRF", "RRF")
     ]
 
     # 1. Recall Plot

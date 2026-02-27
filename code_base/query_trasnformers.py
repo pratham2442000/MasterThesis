@@ -167,6 +167,76 @@ class CombMAXTransformer(pt.Transformer):
         return res
 
 
+class RRFTransformer(pt.Transformer):
+    """
+    Reciprocal Rank Fusion (RRF) combines document rankings from multiple result lists.
+    For each document, the fused score is: RRF_score(d) = Σ 1 / (k + rank_i(d))
+    where k is a constant (default 60) and rank_i(d) is the rank of document d in list i.
+
+    Like CombMAXTransformer, this expects pre-merged data (via MergeRewrites) where
+    multiple rewrites share the same qid. It assigns ranks within each (qid, orig_qid)
+    sub-group before computing the RRF score.
+    """
+
+    def __init__(self, k: int = 60):
+        self.k = k
+
+    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
+        if res.empty:
+            return res
+
+        # Detect if data has sub-query structure (e.g. "101_0", "101_1")
+        # If 'orig_qid' column exists, use it; otherwise treat qid as-is
+        has_orig_qid = 'orig_qid' in res.columns
+
+        if has_orig_qid:
+            # Data was NOT merged yet — we have sub-queries
+            # First assign ranks within each sub-query
+            res = res.sort_values(["qid", "score"], ascending=[True, False])
+            res["_sub_rank"] = res.groupby("qid").cumcount() + 1
+
+            # Extract original qid
+            res["_base_qid"] = res["qid"].astype(str).apply(lambda x: x.split("_")[0])
+        else:
+            # Data was already merged — multiple docs may share the same qid
+            # We need to identify which "list" each doc came from
+            # Since MergeRewrites strips the suffix, we use the existing rank/score
+            # Assign ranks based on score within each qid
+            res = res.sort_values(["qid", "score"], ascending=[True, False])
+            res["_sub_rank"] = res.groupby("qid").cumcount() + 1
+            res["_base_qid"] = res["qid"].astype(str)
+
+        out_rows = []
+
+        for base_qid, group in res.groupby("_base_qid"):
+            # Compute RRF score for each unique document
+            doc_scores = defaultdict(float)
+
+            for _, row in group.iterrows():
+                rank = row["_sub_rank"]
+                doc_scores[row["docno"]] += 1.0 / (self.k + rank)
+
+            # Sort by RRF score descending
+            sorted_docs = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
+
+            for rank, (docno, score) in enumerate(sorted_docs, 1):
+                out_rows.append({
+                    "qid": base_qid,
+                    "docno": docno,
+                    "score": score,
+                    "rank": rank,
+                })
+
+        result_df = pd.DataFrame(out_rows)
+
+        # Clean up temporary columns from input (in case it's reused)
+        for col in ["_sub_rank", "_base_qid"]:
+            if col in res.columns:
+                res.drop(columns=[col], inplace=True)
+
+        return result_df
+
+
 
 # Example usage
 if __name__ == "__main__":

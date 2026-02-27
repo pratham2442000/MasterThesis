@@ -24,7 +24,7 @@ from code_base.experiment_utils import (
     MergeRewrites,
     AttachOriginalQuery
 )
-from code_base.query_trasnformers import Dedup, CombMAXTransformer
+from code_base.query_trasnformers import Dedup, CombMAXTransformer, RRFTransformer
 
 # -----------------------------------------------------------------------------
 # Configuration & Constants
@@ -152,6 +152,23 @@ def get_pipelines(
                      >> MergeRewrites()
                      >> CombMAXTransformer())
 
+    # Pipeline 5: RRF (merge-then-rerank)
+    p_rrf = (rewrite
+             >> bm25
+             >> MergeRewrites()
+             >> attach_query
+             >> RRFTransformer()
+             >> text_getter
+             >> reranker)
+
+    # Pipeline 6: RRF RTM (rerank-then-merge)
+    p_rrf_rtm = (rewrite
+                 >> bm25
+                 >> text_getter
+                 >> reranker
+                 >> MergeRewrites()
+                 >> RRFTransformer())
+
     return {
         "BM25": pipeline_bm25_base,
         "BM25_MonoT5": pipeline_bm25_t5,
@@ -159,6 +176,8 @@ def get_pipelines(
         "CombMAX": p_combmax,
         "Dedup_RTM": p_dedup_rtm,
         "CombMAX_RTM": p_combmax_rtm,
+        "RRF": p_rrf,
+        "RRF_RTM": p_rrf_rtm,
     }
 
 
@@ -215,6 +234,8 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
         ("CombMAX", "CombMAX (Merge→Rerank)"),
         ("Dedup_RTM", "Dedup (Rerank→Merge)"),
         ("CombMAX_RTM", "CombMAX (Rerank→Merge)"),
+        ("RRF", "RRF (Merge→Rerank)"),
+        ("RRF_RTM", "RRF (Rerank→Merge)"),
     ]
 
     # 1. Recall Plot
