@@ -30,7 +30,7 @@ def download_model(model_name, output_dir):
 
 
 if __name__ == "__main__":
-    base_path = "/scratch/pjohari/MasterThesis/models"
+    base_path = "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/models"  # "/scratch/pjohari/MasterThesis/models"
 
     models_to_download = [
         "castorini/monot5-base-msmarco",  # Works with Seq2Seq

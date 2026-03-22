@@ -59,12 +59,14 @@ def main():
         print(f"Set sample limit to {sample_limit}")
 
     # Prepare questions list: (question, q_id, type) tuples
+    # The 'type' column exists for all datasets (set to 'unknown' for MSMARCO)
     questions = list(zip(topics_df["query"], topics_df["qid"], topics_df["type"]))
 
     print(f"\nPreparing to rewrite {len(questions)} queries...")
     print("This will make API calls to OpenAI.")
 
     # Run preprep_dataset with live=True to make actual API calls
+    # type_distribution is None for MSMARCO, which skips type-based sampling
     try:
         df = preprep_dataset(
             name=constants.DATASET_NAME,

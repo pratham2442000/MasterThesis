@@ -1,0 +1,258 @@
+"""
+Unified Dataset Setup Script
+==============================
+Runs all setup steps needed before experiments can execute:
+  1. Build BM25 index (needed for experiments 1, 2, 2b, 3)
+  2. Generate query rewrites via LLM (needed for experiments 2, 2a, 2b, 3)
+  3. Build dense index (needed for experiment 2a, optional)
+
+Usage:
+    python experiments/dataset_setup.py                  # run all steps
+    python experiments/dataset_setup.py --steps index     # BM25 index only
+    python experiments/dataset_setup.py --steps rewrites  # query rewrites only
+    python experiments/dataset_setup.py --steps dense     # dense index only
+    python experiments/dataset_setup.py --steps index rewrites  # multiple steps
+    python experiments/dataset_setup.py --skip-dense      # all except dense
+
+All configuration is read from constants.py. To switch datasets,
+change constants.DATASET_NAME and re-run this script.
+"""
+
+import argparse
+import os
+import sys
+
+# Add parent directory to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import pyterrier as pt
+
+import constants
+from code_base.dataset_factory import get_dataset
+
+
+def step_build_bm25_index():
+    """Step 1: Build BM25 index from the dataset corpus."""
+    print("\n" + "=" * 60)
+    print("STEP 1: Building BM25 Index")
+    print("=" * 60)
+
+    INDEX_DIR = os.path.dirname(constants.INDEX_PATH)
+    print(f"  Dataset: {constants.DATASET_NAME}")
+    print(f"  Index Directory: {INDEX_DIR}")
+
+    # Check if index already exists
+    if os.path.exists(constants.INDEX_PATH):
+        print(f"  Warning: Index already exists at {constants.INDEX_PATH}")
+        response = input("  Overwrite? (y/n): ").strip().lower()
+        if response != 'y':
+            print("  Skipping BM25 index creation.")
+            return
+
+    if constants.DATASET_NAME == "msmarco-passage":
+        # MSMARCO: use ir_datasets corpus iterator (8.8M passages)
+        print("  Loading MSMARCO corpus via ir_datasets (this may take a while)...")
+        dataset = pt.get_dataset('irds:msmarco-passage')
+        os.makedirs(INDEX_DIR, exist_ok=True)
+        indexer = pt.IterDictIndexer(
+            INDEX_DIR, overwrite=True,
+            meta={'docno': 256, 'text': 4096}
+        )
+        index_ref = indexer.index(dataset.get_corpus_iter(), fields=['text'])
+    else:
+        # Custom datasets: load corpus into DataFrame first
+        print("  Loading corpus...")
+        docs_df, _, _ = get_dataset(constants.DATASET_NAME, constants.DATA_SPLIT)
+
+        if docs_df is None:
+            print("  ERROR: No corpus available for indexing.")
+            return
+
+        # Clean documents
+        docs_df = docs_df.dropna(subset=['docno', 'text'])
+        docs_df['docno'] = docs_df['docno'].astype(str)
+        docs_df = docs_df[docs_df['text'].str.strip() != '']
+        print(f"  Documents to index: {len(docs_df)}")
+
+        os.makedirs(INDEX_DIR, exist_ok=True)
+        indexer = pt.IterDictIndexer(
+            INDEX_DIR, overwrite=True,
+            meta={'docno': 256, 'text': 4096}
+        )
+        index_ref = indexer.index(docs_df.to_dict(orient='records'))
+
+    print(f"  BM25 index created: {index_ref}")
+
+
+def step_generate_rewrites():
+    """Step 2: Generate query rewrites via LLM."""
+    print("\n" + "=" * 60)
+    print("STEP 2: Generating Query Rewrites via LLM")
+    print("=" * 60)
+
+    from code_base.llm_q import preprep_dataset
+
+    print(f"  Dataset: {constants.DATASET_NAME}")
+    print(f"  Split: {constants.DATA_SPLIT}")
+    print(f"  Rewrites per query: {constants.LLM_REWRITES_PER_QUERY}")
+    print(f"  Topic limit: {constants.EXPERIMENT_2_TOPIC_LIMIT}")
+    print(f"  Type distribution: {constants.EXPERIMENT_2_TYPE_DISTRIBUTION}")
+
+    # Load dataset
+    print("  Loading topics...")
+    _, topics_df, _ = get_dataset(constants.DATASET_NAME, constants.DATA_SPLIT)
+    print(f"  Loaded {len(topics_df)} topics")
+
+    # Determine sample limit
+    sample_limit = None
+    if constants.EXPERIMENT_2_TOPIC_LIMIT > 0:
+        sample_limit = constants.EXPERIMENT_2_TOPIC_LIMIT
+        print(f"  Sample limit: {sample_limit}")
+
+    # Build questions list
+    questions = list(zip(topics_df["query"], topics_df["qid"], topics_df["type"]))
+
+    # Check if rewrites already exist
+    n_rewrites = constants.LLM_REWRITES_PER_QUERY
+    filename = f"{constants.DATASET_NAME}_rewritten_queries_dataset_{n_rewrites}_{constants.DATA_SPLIT}.csv"
+    filepath = os.path.join(constants.DATA_PATH, filename)
+
+    if os.path.exists(filepath):
+        print(f"  Existing rewrites found at: {filepath}")
+        print("  Will skip already-processed queries (incremental mode).")
+
+    # Run rewriting
+    df = preprep_dataset(
+        name=constants.DATASET_NAME,
+        questions=questions,
+        split=constants.DATA_SPLIT,
+        path_dt=constants.DATA_PATH,
+        live=True,
+        type_distribution=constants.EXPERIMENT_2_TYPE_DISTRIBUTION,
+        sample_limit=sample_limit
+    )
+
+    print(f"  Rewrites saved: {len(df)} queries with {n_rewrites} rewrites each")
+
+
+def step_build_dense_index():
+    """Step 3: Build dense index for experiment 2a."""
+    print("\n" + "=" * 60)
+    print("STEP 3: Building Dense Index (TCT-ColBERT)")
+    print("=" * 60)
+
+    try:
+        import pyterrier_dr as pt_dr
+    except ImportError:
+        print("  ERROR: pyterrier_dr not installed. Run: pip install pyterrier-dr")
+        return
+
+    model_name = constants.DENSE_MODEL_NAME
+    index_path = constants.DENSE_INDEX_PATH
+
+    print(f"  Model: {model_name}")
+    print(f"  Index Path: {index_path}")
+
+    # Check if already exists
+    if os.path.exists(os.path.join(index_path, "index.dpr")):
+        print(f"  Warning: Dense index already exists at {index_path}")
+        response = input("  Overwrite? (y/n): ").strip().lower()
+        if response != 'y':
+            print("  Skipping dense index creation.")
+            return
+
+    # Load corpus
+    if constants.DATASET_NAME == "msmarco-passage":
+        print("  Loading MSMARCO corpus via ir_datasets...")
+        dataset = pt.get_dataset('irds:msmarco-passage')
+        model = pt_dr.TctColBert(model_name, verbose=True)
+        index = pt_dr.FlexIndex(index_path)
+        pipeline = model.doc_encoder() >> index.indexer(mode="overwrite")
+        pipeline.index(dataset.get_corpus_iter())
+    else:
+        print("  Loading corpus...")
+        docs_df, _, _ = get_dataset(constants.DATASET_NAME, constants.DATA_SPLIT)
+
+        if docs_df is None:
+            print("  ERROR: No corpus available for dense indexing.")
+            return
+
+        model = pt_dr.TctColBert(model_name, verbose=True)
+        index = pt_dr.FlexIndex(index_path)
+        pipeline = model.doc_encoder() >> index.indexer(mode="overwrite")
+        pipeline.index(docs_df.to_dict(orient='records'))
+
+    print("  Dense index created successfully.")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Unified dataset setup for all experiments.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python experiments/dataset_setup.py                     # all steps
+  python experiments/dataset_setup.py --steps index       # BM25 index only
+  python experiments/dataset_setup.py --steps rewrites    # rewrites only
+  python experiments/dataset_setup.py --skip-dense        # index + rewrites
+        """
+    )
+    parser.add_argument(
+        '--steps', nargs='+',
+        choices=['index', 'rewrites', 'dense'],
+        default=None,
+        help='Specific steps to run (default: all)'
+    )
+    parser.add_argument(
+        '--skip-dense', action='store_true',
+        help='Run all steps except dense indexing'
+    )
+
+    args = parser.parse_args()
+
+    if not pt.started():
+        pt.init()
+
+    # Determine which steps to run
+    if args.steps:
+        steps = set(args.steps)
+    elif args.skip_dense:
+        steps = {'index', 'rewrites'}
+    else:
+        steps = {'index', 'rewrites', 'dense'}
+
+    print("=" * 60)
+    print("Unified Dataset Setup")
+    print("=" * 60)
+    print(f"  Dataset: {constants.DATASET_NAME}")
+    print(f"  Split: {constants.DATA_SPLIT}")
+    print(f"  Data Path: {constants.DATA_PATH}")
+    print(f"  Steps: {', '.join(sorted(steps))}")
+    print("=" * 60)
+
+    # Execute steps in order
+    if 'index' in steps:
+        step_build_bm25_index()
+
+    if 'rewrites' in steps:
+        step_generate_rewrites()
+
+    if 'dense' in steps:
+        step_build_dense_index()
+
+    print("\n" + "=" * 60)
+    print("Setup Complete!")
+    print("=" * 60)
+    print(f"\nDataset '{constants.DATASET_NAME}' is ready for experiments.")
+    if 'index' in steps:
+        print(f"  BM25 Index: {constants.INDEX_PATH}")
+    if 'rewrites' in steps:
+        n = constants.LLM_REWRITES_PER_QUERY
+        fname = f"{constants.DATASET_NAME}_rewritten_queries_dataset_{n}_{constants.DATA_SPLIT}.csv"
+        print(f"  Rewrites: {os.path.join(constants.DATA_PATH, fname)}")
+    if 'dense' in steps:
+        print(f"  Dense Index: {constants.DENSE_INDEX_PATH}")
+
+
+if __name__ == "__main__":
+    main()

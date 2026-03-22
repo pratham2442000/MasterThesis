@@ -1,26 +1,61 @@
 """
 Constants configuration file for experiments.
 Modify values here to reconfigure experiments without changing code.
+
+To switch datasets, change DATASET_NAME below. All dataset-specific
+paths (DATA_PATH, INDEX_PATH, etc.) are automatically derived.
 """
 
 import numpy as np
 from pyterrier.measures import R, nDCG
 
-# ==================== Data Configuration ====================
-DATA_PATH = (
-    "/scratch/pjohari/MasterThesis/data/2wikimultihopQA" 
-    # "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
-)
-RESULTS_PATH=(
-    "/scratch/pjohari/MasterThesis/results/"
-    # "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
-)
-DATA_SPLIT = "test"
+# ==================== Dataset Selection ====================
+# Change this ONE value to switch all experiments to a different dataset
 DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage"
 
-# ==================== Index Configuration ====================
-INDEX_PATH = "./index/wiki_musique_index/data.properties"
-DENSE_INDEX_PATH = "./index/wiki_musique_dense_index"
+# ==================== Dataset-Specific Configuration ====================
+# All dataset-dependent values are derived from DATASET_NAME.
+# To add a new dataset, add a new entry to _DATASET_CONFIGS.
+_DATASET_CONFIGS = {
+    "wiki_musique": {
+        "DATA_PATH": (
+            # "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
+            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
+        ),
+        "DATA_SPLIT": "test",
+        "INDEX_PATH": "./index/wiki_musique_index/data.properties",
+        "DENSE_INDEX_PATH": "./index/wiki_musique_dense_index",
+        "TYPE_DISTRIBUTION": {
+            "compositional": 0.5,
+            "comparison": 0.3,
+            "bridge_comparison": 0.1,
+            "inference": 0.1,
+        },
+    },
+    "msmarco-passage": {
+        "DATA_PATH": (
+            # "/scratch/pjohari/MasterThesis/data/msmarco-passage"
+            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
+        ),
+        "DATA_SPLIT": "19",  # -> irds:msmarco-passage/trec-dl-2019/judged
+        "INDEX_PATH": "./index/msmarco_passage_index/data.properties",
+        "DENSE_INDEX_PATH": "./index/msmarco_passage_dense_index",
+        "TYPE_DISTRIBUTION": None,  # MSMARCO has no query types
+    },
+}
+
+# ==================== Derived Data Configuration ====================
+DATA_PATH = _DATASET_CONFIGS[DATASET_NAME]["DATA_PATH"]
+DATA_SPLIT = _DATASET_CONFIGS[DATASET_NAME]["DATA_SPLIT"]
+INDEX_PATH = _DATASET_CONFIGS[DATASET_NAME]["INDEX_PATH"]
+DENSE_INDEX_PATH = _DATASET_CONFIGS[DATASET_NAME]["DENSE_INDEX_PATH"]
+EXPERIMENT_2_TYPE_DISTRIBUTION = _DATASET_CONFIGS[DATASET_NAME]["TYPE_DISTRIBUTION"]
+
+RESULTS_PATH = (
+    # "/scratch/pjohari/MasterThesis/results/"
+    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
+)
+
 DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 
 # ==================== Experiment 1 Configuration ====================
@@ -37,15 +72,6 @@ EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 500, num=10, dtype=int
 # Limits the number of topics (queries) used for experiment 2
 # default 1000
 EXPERIMENT_2_TOPIC_LIMIT = 500
-
-# Query type distribution for dataset preparation
-# Types: compositional, comparison, bridge_comparison, inference
-EXPERIMENT_2_TYPE_DISTRIBUTION = {
-    "compositional": 0.5,
-    "comparison": 0.3,
-    "bridge_comparison": 0.1,
-    "inference": 0.1
-}
 
 # Number of rewritten queries per original query
 EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 10, dtype=int)]
