@@ -14,8 +14,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 
 import constants
 from code_base import dataset_factory
-from code_base.experiment_utils import (
-    save_experiment_results,
+from code_base.experiment_utils import save_experiment_results
+from code_base.transformers import (
     preprocess_query,
     QueryRewriteTransformer,
 )
@@ -210,9 +210,10 @@ def main():
         # 1. Environment & Data Setup
         setup_environment(rank)
 
-        if rank == 0 and not os.path.exists(constants.RESULTS_PATH):
-            os.makedirs(constants.RESULTS_PATH)
-            logging.info(f"Created results dir: {constants.RESULTS_PATH}")
+        RESULTS_PATH = os.path.join(constants.RESULTS_PATH, "exp2")
+        if rank == 0 and not os.path.exists(RESULTS_PATH):
+            os.makedirs(RESULTS_PATH, exist_ok=True)
+            logging.info(f"Created results dir: {RESULTS_PATH}")
 
         # Load Dataset
         docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, constants.DATA_SPLIT)
@@ -285,7 +286,7 @@ def main():
             logging.info("Rank 0: Aggregating results...")
 
             # Load comparison data (Experiment 2 results)
-            exp2_df = load_comparison_results(constants.RESULTS_PATH)
+            exp2_df = load_comparison_results(RESULTS_PATH)
 
             all_results = []
 
@@ -326,13 +327,13 @@ def main():
             save_experiment_results(
                 results_df,
                 experiment_name="experiment_2_noise_analysis",
-                output_dir=constants.RESULTS_PATH,
+                output_dir=RESULTS_PATH,
                 filename="experiment_2_noise_analysis_results"
             )
 
             # Plotting
             logging.info("Generating plots...")
-            plot_comparison(results_df, constants.RESULTS_PATH)
+            plot_comparison(results_df, RESULTS_PATH)
 
     except Exception as e:
         logging.error(f"Rank {rank}: CRITICAL ERROR: {e}\n{traceback.format_exc()}")

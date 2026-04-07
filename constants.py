@@ -1,21 +1,21 @@
 """
-Constants configuration file for experiments.
-Modify values here to reconfigure experiments without changing code.
+Constants Configuration
+========================
+Central configuration for all experiments.
 
-To switch datasets, change DATASET_NAME below. All dataset-specific
-paths (DATA_PATH, INDEX_PATH, etc.) are automatically derived.
+Change ``DATASET_NAME`` to switch all experiments to a different dataset.
+All dataset-specific paths are automatically derived from the config
+dictionaries below.
 """
 
 import numpy as np
 from pyterrier.measures import R, nDCG
 
 # ==================== Dataset Selection ====================
-# Change this ONE value to switch all experiments to a different dataset
+# Change this ONE value to switch all experiments to a different dataset.
 DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage"
 
 # ==================== Dataset-Specific Configuration ====================
-# All dataset-dependent values are derived from DATASET_NAME.
-# To add a new dataset, add a new entry to _DATASET_CONFIGS.
 _DATASET_CONFIGS = {
     "wiki_musique": {
         "DATA_PATH": (
@@ -59,68 +59,39 @@ RESULTS_PATH = (
 DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 
 # ==================== Experiment 1 Configuration ====================
-# Limits the number of topics (queries) used for experiment 1
-# default 1000
 EXPERIMENT_1_TOPIC_LIMIT = 500
-
-# Initial Cutoff Values (c) for BM25 Retrieval in experiment 1
-# Defines the range of 'c' to experiment with
-# List or single int
 EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 500, num=10, dtype=int)]
+EXPERIMENT_1_EVAL_METRICS = [R @ 10, nDCG @ 10]
 
 # ==================== Experiment 2 Configuration ====================
-# Limits the number of topics (queries) used for experiment 2
-# default 1000
 EXPERIMENT_2_TOPIC_LIMIT = 500
-
-# Number of rewritten queries per original query
 EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 10, dtype=int)]
-
-# Docs per query (or per expanded query)
 EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
+EXPERIMENT_2_EVAL_METRICS = [R @ 10, nDCG @ 10]
 
 # ==================== Experiment 2c Configuration ====================
-# Fixed number of rewrites
 EXPERIMENT_2C_REWRITING_COUNT = 15
-
-# Range of 'c' values (cutoff) to experiment with
-# Reusing Experiment 1 values as requested
 EXPERIMENT_2C_C_VALUES = EXPERIMENT_1_C_VALUES
 
 # ==================== Experiment 3 Configuration ====================
-# Limits the number of topics (queries) used for experiment 3
-# default 1000
 EXPERIMENT_3_TOPIC_LIMIT = 500
-
-# Fixed number of rewrites (best value from exp2/exp2b results)
 EXPERIMENT_3_BEST_N_REWRITES = 10
-
-# Range of cutoff values to vary (reuses Experiment 1 values)
 EXPERIMENT_3_C_VALUES = [int(i) for i in np.geomspace(10, 100, num=10, dtype=int)]
+EXPERIMENT_3_EVAL_METRICS = [R @ 10, nDCG @ 10]
 
 # ==================== Reranker Configuration ====================
 T5_BATCH_SIZE = 16
 EXPERIMENT_BATCH_SIZE = 10
 
 # ==================== LLM Query Rewriting Configuration ====================
-# Number of (max) rewritten queries to generate per original query
 LLM_REWRITES_PER_QUERY = 30
-
-# LLM Model Configuration
 LLM_TEMPERATURE = 0.7
-LLM_MODEL_NAME = "gpt-4o-mini"  # Can be overridden by OPENAI_MODEL env var
+LLM_MODEL_NAME = "gpt-4o-mini"
 
 # ==================== API Permission Configuration ====================
-# Set to True to require explicit permission before making API calls
-# Set to False to automatically allow API calls (for automated scripts)
 REQUIRE_API_PERMISSION = True
 
-# ==================== Evaluation Metrics ====================
-# Experiment 1 metrics
-EXPERIMENT_1_EVAL_METRICS = [R@10, nDCG@10]
-
-# Experiment 2 metrics
-EXPERIMENT_2_EVAL_METRICS = [R@10, nDCG@10]
-
-# Experiment 3 metrics
-EXPERIMENT_3_EVAL_METRICS = [R@10, nDCG@10]
+# ==================== RAG Generation Configuration ====================
+RAG_MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
+RAG_MODEL_MAX_NEW_TOKENS = 128
+RAG_CONCATENATOR_TOP_K = 5

@@ -20,15 +20,15 @@ from code_base.experiment_utils import (
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
+)
+from code_base.transformers import (
     preprocess_query,
     QueryRewriteTransformer,
-    MergeRewrites
-)
-from code_base.query_trasnformers import (
+    MergeRewrites,
     Dedup,
     BordaVotingTransformerV2,
     CombMAXTransformer,
-    RRFTransformer
+    RRFTransformer,
 )
 
 # -----------------------------------------------------------------------------
@@ -327,10 +327,10 @@ def main():
         setup_environment(rank)
 
         # Results path for experiment 2b
-        RESULTS_PATH_2B = constants.RESULTS_PATH
+        RESULTS_PATH_2B = os.path.join(constants.RESULTS_PATH, "exp2b")
 
         if rank == 0 and not os.path.exists(RESULTS_PATH_2B):
-            os.makedirs(RESULTS_PATH_2B)
+            os.makedirs(RESULTS_PATH_2B, exist_ok=True)
             logging.info(f"Created results dir: {RESULTS_PATH_2B}")
 
         # Load Dataset

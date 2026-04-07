@@ -64,7 +64,8 @@ def process_queries(dataset_path: Path, title_to_docnos: Dict[str, List[str]]) -
         topics_list.append({
             "qid": query_id,
             "query": data["question"],
-            "type": data.get("type", "unknown")
+            "type": data.get("type", "unknown"),
+            "answer": data.get("answer", "")
         })
 
         # Add Qrels (Relevance Judgments)
@@ -83,6 +84,16 @@ def process_queries(dataset_path: Path, title_to_docnos: Dict[str, List[str]]) -
     qrels_df = pd.DataFrame(qrels_list)
 
     return topics_df, qrels_df
+
+
+def get_gold_answers(topics_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert topics_df into pyterrier-rag GA (gold answers) format.
+    Required columns: qid, gold_answer (string).
+    """
+    ga = topics_df[["qid"]].copy()
+    ga["gold_answer"] = topics_df["answer"].fillna("")
+    return ga
 
 
 def wiki_loader_pyt(data_path: str, split: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:

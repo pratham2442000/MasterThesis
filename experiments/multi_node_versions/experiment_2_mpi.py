@@ -20,17 +20,17 @@ from code_base.experiment_utils import (
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
+)
+from code_base.transformers import (
     preprocess_query,
     QueryRewriteTransformer,
     MergeRewrites,
-    AttachOriginalQuery
-)
-from code_base.query_trasnformers import (
+    AttachOriginalQuery,
     Dedup,
     DedupAndCutoff,
     BordaVotingTransformerV2,
     CombMAXTransformer,
-    RRFTransformer
+    RRFTransformer,
 )
 
 # -----------------------------------------------------------------------------
@@ -332,9 +332,10 @@ def main():
         # 1. Environment & Data Setup
         setup_environment(rank)
 
-        if rank == 0 and not os.path.exists(constants.RESULTS_PATH):
-            os.makedirs(constants.RESULTS_PATH)
-            logging.info(f"Created results dir: {constants.RESULTS_PATH}")
+        RESULTS_PATH = os.path.join(constants.RESULTS_PATH, "exp2")
+        if rank == 0 and not os.path.exists(RESULTS_PATH):
+            os.makedirs(RESULTS_PATH, exist_ok=True)
+            logging.info(f"Created results dir: {RESULTS_PATH}")
 
         # Load Dataset
         docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, constants.DATA_SPLIT)
@@ -412,13 +413,13 @@ def main():
             save_experiment_results(
                 results_df,
                 experiment_name="experiment_2",
-                output_dir=constants.RESULTS_PATH,
+                output_dir=RESULTS_PATH,
                 filename="experiment_2_results",
             )
 
             # Generate Plots
             logging.info("Generating plots...")
-            generate_plots(results_df, constants.RESULTS_PATH)
+            generate_plots(results_df, RESULTS_PATH)
 
     except Exception as e:
         logging.error(f"Rank {rank}: CRITICAL ERROR: {e}\n{traceback.format_exc()}")

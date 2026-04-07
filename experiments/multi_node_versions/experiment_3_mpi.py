@@ -19,12 +19,16 @@ from code_base.experiment_utils import (
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
+)
+from code_base.transformers import (
     preprocess_query,
     QueryRewriteTransformer,
     MergeRewrites,
-    AttachOriginalQuery
+    AttachOriginalQuery,
+    Dedup,
+    CombMAXTransformer,
+    RRFTransformer,
 )
-from code_base.query_trasnformers import Dedup, CombMAXTransformer, RRFTransformer
 
 # -----------------------------------------------------------------------------
 # Configuration & Constants

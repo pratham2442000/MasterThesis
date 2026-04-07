@@ -1,15 +1,21 @@
 """
-Experiment Utilities Module
-===========================
-Reusable utilities for experiments including:
-- Plotting functions for visualizing results
-- Metadata storage and retrieval for experiment results
+Experiment Utilities
+====================
+Reusable utilities for experiments:
+
+- **Plotting**: ``plot_metrics``, ``plot_with_regression``
+- **Metadata**: ``collect_experiment_metadata``, ``save_experiment_results``,
+  ``load_experiment_metadata``, ``find_experiment_files``
+
+All PyTerrier Transformer classes have been moved to
+``code_base.transformers``.
 """
 
+import glob
 import json
 import os
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,9 +25,75 @@ from scipy.stats import linregress
 import constants
 
 
-def preprocess_query(query: str) -> str:
-    query = "".join(e for e in query if e.isalnum() or e.isspace())
-    return query.lower()
+# ─────────────────────────────────────────────
+# Plotting
+# ─────────────────────────────────────────────
+
+def _setup_plot(
+        df: pd.DataFrame,
+        x_col: str,
+        metric_cols: List[str],
+        labels: Optional[List[str]],
+        title: Optional[str],
+        xlabel: Optional[str],
+        ylabel: Optional[str],
+        use_log_scale: Optional[bool],
+        figsize: tuple,
+):
+    """Shared plot initialization used by public plotting functions.
+
+    Args:
+        df: DataFrame with results.
+        x_col: Column name for x-axis.
+        metric_cols: Columns to plot.
+        labels: Legend labels (defaults to column names).
+        title: Plot title.
+        xlabel: X-axis label.
+        ylabel: Y-axis label.
+        use_log_scale: Whether to log-scale x-axis. ``None`` = auto-detect.
+        figsize: Figure dimensions.
+
+    Returns:
+        Tuple of ``(fig, ax, labels, title, xlabel, ylabel, use_log_scale)``.
+    """
+    if labels is None or len(labels) != len(metric_cols):
+        labels = list(metric_cols)
+    if title is None:
+        title = f"Metrics vs. {x_col}"
+    if xlabel is None:
+        xlabel = x_col.replace("_", " ").title()
+    if ylabel is None:
+        ylabel = metric_cols[0].replace("_", " ")
+
+    if use_log_scale is None:
+        if len(df[x_col]) > 2 and (df[x_col].max() / df[x_col].min() > 5):
+            use_log_scale = True
+        else:
+            use_log_scale = False
+
+    fig, ax = plt.subplots(figsize=figsize)
+    return fig, ax, labels, title, xlabel, ylabel, use_log_scale
+
+
+def _apply_log_ticks(ax, df, x_col, use_log_scale):
+    """Apply log-scale formatting to x-axis if requested."""
+    if use_log_scale:
+        ax.set_xscale("log")
+        ax.set_xticks(df[x_col])
+        ax.set_xticklabels([str(v) for v in df[x_col]])
+
+
+def _save_or_show(fig, filename, output_dir):
+    """Save figure to file, or show interactively."""
+    if output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
+        filepath = os.path.join(output_dir, filename)
+        fig.savefig(filepath, dpi=150, bbox_inches="tight")
+        print(f"Chart saved as {filepath}")
+    else:
+        print("Displaying chart...")
+        plt.show()
+    plt.close(fig)
 
 
 def plot_metrics(
@@ -36,80 +108,50 @@ def plot_metrics(
         output_dir: Optional[str] = None,
         use_log_scale: Optional[bool] = None,
         figsize: tuple = (10, 6),
-):
-    """
-    Generates and saves a plot for metrics over a variable.
+) -> None:
+    """Generate a line plot of metrics over a variable.
 
     Args:
-        df: DataFrame with results
-        x_col: Column name for x-axis (e.g., 'c', 'cutoff')
-        metric_cols: List of column names to plot
-        labels: Optional list of labels for each metric column.
-            If None, uses column names.
-        title: Plot title. If None, generates from metric names.
-        xlabel: X-axis label. If None, uses x_col.
-        ylabel: Y-axis label. If None, uses first metric name.
-        filename: Output filename. If None, generates from metric names.
-        output_dir: Directory to save plot. If None just print the plot.
-        use_log_scale: Whether to use log scale for x-axis. If None,
-            auto-detects.
-        figsize: Figure size tuple (width, height).
+        df: DataFrame with results.
+        x_col: Column name for x-axis.
+        metric_cols: List of column names to plot.
+        labels: Legend labels (one per metric_col).
+        title: Plot title.
+        xlabel: X-axis label.
+        ylabel: Y-axis label.
+        filename: Output filename (without directory).
+        output_dir: Directory to save plot. ``None`` → display interactively.
+        use_log_scale: Log-scale x-axis. ``None`` → auto-detect.
+        figsize: Figure size ``(width, height)``.
     """
-
-    if labels is None:
-        labels = metric_cols
-    elif len(labels) != len(metric_cols):
-        labels = metric_cols  # Fallback if length mismatch
-
-    if title is None:
-        title = f"Metrics vs. {x_col}"
-    if xlabel is None:
-        xlabel = x_col.replace("_", " ").title()
-    if ylabel is None:
-        ylabel = metric_cols[0].replace("_", " ")
-
-    plt.figure(figsize=figsize)
+    fig, ax, labels, title, xlabel, ylabel, use_log_scale = _setup_plot(
+        df, x_col, metric_cols, labels, title, xlabel, ylabel,
+        use_log_scale, figsize,
+    )
 
     markers = ["o", "x", "s", "^", "D", "v", "*", "+"]
-    for i, (metric_col, label) in enumerate(zip(metric_cols, labels)):
+    for i, (col, label) in enumerate(zip(metric_cols, labels)):
         marker = markers[i % len(markers)]
-        plt.plot(df[x_col], np.round(df[metric_col], 3), marker=marker, label=label, alpha=0.7)
+        ax.plot(
+            df[x_col], np.round(df[col], 3),
+            marker=marker, label=label, alpha=0.7,
+        )
 
-    plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.legend()
-
-    # Auto-detect log scale if not specified
-    if use_log_scale is None:
-        if len(df[x_col]) > 2 and (df[x_col].max() / df[x_col].min() > 5):
-            use_log_scale = True
-        else:
-            use_log_scale = False
-
-    if use_log_scale:
-        plt.xscale("log")
-        plt.xticks(df[x_col], labels=[str(v) for v in df[x_col]])
-
-    plt.tight_layout()
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend()
+    _apply_log_ticks(ax, df, x_col, use_log_scale)
+    fig.tight_layout()
 
     if filename is None:
-        safe_metric = metric_cols[0].replace("@", "_at_").replace("/", "_")
-        filename = f"/{x_col}_vs_{safe_metric}.png"
+        safe = metric_cols[0].replace("@", "_at_").replace("/", "_")
+        filename = f"{x_col}_vs_{safe}.png"
+    filename = filename.lstrip("/")
 
-    if not filename.startswith("/"):
-        filename = "/" + filename
+    _save_or_show(fig, filename, output_dir)
 
-    if output_dir != None:
-        os.makedirs(output_dir, exist_ok=True)
-        filepath = output_dir + filename
-        plt.savefig(filepath, dpi=150, bbox_inches='tight')
-        print(f"Chart saved as {filepath}")
-    else:
-        print("Displaying chart...")
-        plt.show()
-    plt.close()
 
 def plot_with_regression(
         df: pd.DataFrame,
@@ -125,104 +167,90 @@ def plot_with_regression(
         figsize: tuple = (10, 6),
         print_stats: bool = True,
 ) -> Dict[str, Dict[str, float]]:
-    """
-    Plots metrics with linear regression lines (using log(x) if specified).
+    """Plot metrics with linear regression lines.
+
+    Uses ``log(x)`` for regression when ``use_log_scale`` is True.
 
     Args:
-        df: DataFrame with results
-        x_col: Column name for x-axis
-        metric_cols: List of column names to plot
-        labels: Optional list of labels for each metric column
-        use_log_scale: Whether to use log(x) for regression
-        title: Plot title
-        xlabel: X-axis label
-        ylabel: Y-axis label
-        filename: Output filename
-        output_dir: Directory to save plot
-        figsize: Figure size tuple
-        print_stats: Whether to print regression statistics
+        df: DataFrame with results.
+        x_col: Column name for x-axis.
+        metric_cols: Columns to plot.
+        labels: Legend labels.
+        use_log_scale: Use ``log(x)`` for regression.
+        title: Plot title.
+        xlabel: X-axis label.
+        ylabel: Y-axis label.
+        filename: Output filename.
+        output_dir: Output directory. Defaults to ``constants.DATA_PATH``.
+        figsize: Figure size.
+        print_stats: Print regression statistics to stdout.
 
     Returns:
-        Dictionary with regression statistics for each metric
+        Dict mapping metric column → regression statistics.
     """
     if output_dir is None:
         output_dir = constants.DATA_PATH
 
-    if labels is None:
-        labels = metric_cols
-    elif len(labels) != len(metric_cols):
-        labels = metric_cols
+    if labels is None or len(labels) != len(metric_cols):
+        labels = list(metric_cols)
 
-    # Prepare x values for regression
+    # Regression x values
     if use_log_scale:
-        x_regression = np.log(df[x_col])
-        x_regression_label = f"log({x_col})"
+        x_reg = np.log(df[x_col])
+        x_reg_label = f"log({x_col})"
     else:
-        x_regression = df[x_col]
-        x_regression_label = x_col
+        x_reg = df[x_col].values.astype(float)
+        x_reg_label = x_col
 
-    # Perform regression for each metric
-    regression_stats = {}
-    for metric_col, label in zip(metric_cols, labels):
-        y = df[metric_col]
-        print(x_regression, y)
-        slope, intercept, r_value, p_value, std_err = linregress(x_regression, y)
-        r_squared = r_value ** 2
-
-        regression_stats[metric_col] = {
+    # Compute regressions
+    regression_stats: Dict[str, Dict[str, float]] = {}
+    for col, label in zip(metric_cols, labels):
+        y = df[col]
+        slope, intercept, r_value, p_value, std_err = linregress(x_reg, y)
+        stats = {
             "slope": slope,
             "intercept": intercept,
-            "r_squared": r_squared,
+            "r_squared": r_value ** 2,
             "p_value": p_value,
             "std_err": std_err,
         }
+        regression_stats[col] = stats
 
         if print_stats:
             print(f"\n{label}:")
-            eq_str = (
-                f"  Equation: {metric_col} = {slope:.4f} * "
-                f"{x_regression_label} + {intercept:.4f}"
-            )
-            print(eq_str)
-            print(f"  R-squared: {r_squared:.4f}")
-            print(f"  P-value: {p_value:.4g}")
+            print(f"  Equation: {col} = {slope:.4f} * {x_reg_label} + "
+                  f"{intercept:.4f}")
+            print(f"  R²: {stats['r_squared']:.4f}")
+            print(f"  p-value: {p_value:.4g}")
 
-    # Create plot
-    plt.figure(figsize=figsize)
-
+    # Plot
+    fig, ax = plt.subplots(figsize=figsize)
     markers = ["o", "x", "s", "^", "D", "v", "*", "+"]
     colors = plt.cm.tab10(np.linspace(0, 1, len(metric_cols)))
 
-    # Plot measured data points
-    for i, (metric_col, label) in enumerate(zip(metric_cols, labels)):
+    for i, (col, label) in enumerate(zip(metric_cols, labels)):
         marker = markers[i % len(markers)]
-        plt.plot(
-            df[x_col],
-            np.round(df[metric_col], 3),
-            marker=marker,
-            linestyle="",
+        ax.plot(
+            df[x_col], np.round(df[col], 3),
+            marker=marker, linestyle="", color=colors[i],
             label=f"{label} (Measured)",
-            color=colors[i],
         )
 
-    # Plot regression lines
+    # Regression lines
     x_min, x_max = df[x_col].min(), df[x_col].max()
     if use_log_scale:
-        x_values_for_plot = np.logspace(np.log10(x_min), np.log10(x_max), 50)
-        x_regression_for_plot = np.log(x_values_for_plot)
+        x_plot = np.logspace(np.log10(x_min), np.log10(x_max), 50)
+        x_reg_plot = np.log(x_plot)
     else:
-        x_values_for_plot = np.linspace(x_min, x_max, 50)
-        x_regression_for_plot = x_values_for_plot
+        x_plot = np.linspace(x_min, x_max, 50)
+        x_reg_plot = x_plot
 
-    for i, (metric_col, label) in enumerate(zip(metric_cols, labels)):
-        stats = regression_stats[metric_col]
-        y_regression = stats["intercept"] + stats["slope"] * x_regression_for_plot
-        plt.plot(
-            x_values_for_plot,
-            y_regression,
-            color=colors[i],
-            linestyle="--",
-            alpha=0.7,
+    for i, (col, label) in enumerate(zip(metric_cols, labels)):
+        s = regression_stats[col]
+        y_line = s["intercept"] + s["slope"] * x_reg_plot
+        ax.plot(
+            x_plot, y_line,
+            color=colors[i], linestyle="--", alpha=0.7,
             label=f"{label} Regression",
         )
 
@@ -235,49 +263,42 @@ def plot_with_regression(
     if ylabel is None:
         ylabel = metric_cols[0].replace("_", " ")
 
-    plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.grid(True, linestyle="--", alpha=0.6)
-    plt.legend()
-    if use_log_scale:
-        plt.xscale("log")
-        plt.xticks(df[x_col], labels=[str(v) for v in df[x_col]])
-    plt.tight_layout()
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle="--", alpha=0.6)
+    ax.legend()
+    _apply_log_ticks(ax, df, x_col, use_log_scale)
+    fig.tight_layout()
 
     if filename is None:
-        safe_metric = metric_cols[0].replace("@", "_at_").replace("/", "_")
+        safe = metric_cols[0].replace("@", "_at_").replace("/", "_")
         log_suffix = "_log" if use_log_scale else ""
-        filename = f"/{x_col}_vs_{safe_metric}{log_suffix}_regression.png"
+        filename = f"{x_col}_vs_{safe}{log_suffix}_regression.png"
+    filename = filename.lstrip("/")
 
-    if not filename.startswith("/"):
-        filename = "/" + filename
-
-    filepath = output_dir + filename
-    plt.savefig(filepath, dpi=150, bbox_inches='tight')
-    print(f"Chart saved as {filepath}")
-    plt.close()
-
+    _save_or_show(fig, filename, output_dir)
     return regression_stats
 
+
+# ─────────────────────────────────────────────
+# Metadata & Result I/O
+# ─────────────────────────────────────────────
 
 def collect_experiment_metadata(
         experiment_name: str,
         additional_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """
-    Collects metadata from constants and additional sources for an experiment.
+    """Collect metadata from constants for an experiment.
 
     Args:
-        experiment_name: Name of the experiment
-            (e.g., 'experiment_1', 'experiment_2')
-        additional_metadata: Optional dictionary with additional metadata
-            to include
+        experiment_name: Experiment identifier.
+        additional_metadata: Extra key-value pairs to include.
 
     Returns:
-        Dictionary with all metadata
+        Metadata dictionary.
     """
-    metadata = {
+    metadata: Dict[str, Any] = {
         "experiment_name": experiment_name,
         "timestamp": datetime.now().isoformat(),
         "data_path": constants.DATA_PATH,
@@ -286,34 +307,27 @@ def collect_experiment_metadata(
         "index_path": constants.INDEX_PATH,
     }
 
-    # Add experiment-specific constants
     if experiment_name == "experiment_1":
-        metadata.update(
-            {
-                "topic_limit": constants.EXPERIMENT_1_TOPIC_LIMIT,
-                "c_values": constants.EXPERIMENT_1_C_VALUES,
-                "t5_batch_size": constants.T5_BATCH_SIZE,
-                "experiment_batch_size": constants.EXPERIMENT_BATCH_SIZE,
-                "eval_metrics": constants.EXPERIMENT_1_EVAL_METRICS,
-            }
-        )
+        metadata.update({
+            "topic_limit": constants.EXPERIMENT_1_TOPIC_LIMIT,
+            "c_values": constants.EXPERIMENT_1_C_VALUES,
+            "t5_batch_size": constants.T5_BATCH_SIZE,
+            "experiment_batch_size": constants.EXPERIMENT_BATCH_SIZE,
+            "eval_metrics": [str(m) for m in constants.EXPERIMENT_1_EVAL_METRICS],
+        })
     elif experiment_name == "experiment_2":
-        metadata.update(
-            {
-                "topic_limit": constants.EXPERIMENT_2_TOPIC_LIMIT,
-                "n_rewrites": constants.EXPERIMENT_2_N_REWRITES,
-                "retrieval_cutoff": constants.EXPERIMENT_2_RETRIEVAL_CUTOFF,
-                "recall_c": constants.EXPERIMENT_1_C_VALUES,
-                "t5_batch_size": constants.T5_BATCH_SIZE,
-                "experiment_batch_size": constants.EXPERIMENT_BATCH_SIZE,
-                "eval_metrics": constants.EXPERIMENT_2_EVAL_METRICS,
-                "llm_rewrites_per_query": constants.LLM_REWRITES_PER_QUERY,
-                "llm_temperature": constants.LLM_TEMPERATURE,
-                "llm_model_name": constants.LLM_MODEL_NAME,
-            }
-        )
+        metadata.update({
+            "topic_limit": constants.EXPERIMENT_2_TOPIC_LIMIT,
+            "n_rewrites": constants.EXPERIMENT_2_N_REWRITES,
+            "retrieval_cutoff": constants.EXPERIMENT_2_RETRIEVAL_CUTOFF,
+            "t5_batch_size": constants.T5_BATCH_SIZE,
+            "experiment_batch_size": constants.EXPERIMENT_BATCH_SIZE,
+            "eval_metrics": [str(m) for m in constants.EXPERIMENT_2_EVAL_METRICS],
+            "llm_rewrites_per_query": constants.LLM_REWRITES_PER_QUERY,
+            "llm_temperature": constants.LLM_TEMPERATURE,
+            "llm_model_name": constants.LLM_MODEL_NAME,
+        })
 
-    # Add any additional metadata
     if additional_metadata:
         metadata.update(additional_metadata)
 
@@ -328,211 +342,105 @@ def save_experiment_results(
         filename: Optional[str] = None,
         include_timestamp: bool = True,
 ) -> str:
-    """
-    Saves experiment results with metadata to CSV and JSON files.
+    """Save experiment results to CSV with a companion metadata JSON.
 
     Args:
-        results_df: DataFrame or PyTerrier Experiment results with
-            experiment results
-        experiment_name: Name of the experiment
-        metadata: Optional metadata dictionary. If None, collects from
-            constants.
-        output_dir: Directory to save files. If None, uses
-            constants.DATA_PATH.
-        filename: Base filename (without extension). If None, uses
-            experiment_name.
-        include_timestamp: Whether to include timestamp in filename.
+        results_df: DataFrame or PyTerrier result object.
+        experiment_name: Experiment identifier.
+        metadata: Metadata dict. If ``None``, auto-collected.
+        output_dir: Output directory. Defaults to ``constants.DATA_PATH``.
+        filename: Base filename (no extension).
+        include_timestamp: Append timestamp to auto-generated filename.
 
     Returns:
-        Path to the saved CSV file
+        Path to the saved CSV file.
     """
     if output_dir is None:
         output_dir = constants.DATA_PATH
-
     if metadata is None:
         metadata = collect_experiment_metadata(experiment_name)
 
-    # Convert PyTerrier results to DataFrame if needed
+    # Coerce to DataFrame
     if not isinstance(results_df, pd.DataFrame):
-        if hasattr(results_df, "to_csv"):
-            # It is a Styler or similar, get the underlying DataFrame
-            if hasattr(results_df, "data"):
-                results_df = results_df.data
-            else:
-                results_df = pd.DataFrame(results_df)
+        if hasattr(results_df, "data"):
+            results_df = results_df.data
+        elif hasattr(results_df, "to_csv"):
+            results_df = pd.DataFrame(results_df)
         else:
             results_df = pd.DataFrame(results_df)
 
     if filename is None:
         filename = f"{experiment_name}_results"
         if include_timestamp:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{filename}_{timestamp}"
+            filename = f"{filename}_{datetime.now():%Y%m%d_%H%M%S}"
 
-    # Save results CSV
+    os.makedirs(output_dir, exist_ok=True)
+
     csv_path = os.path.join(output_dir, f"{filename}.csv")
     results_df.to_csv(csv_path, index=False)
     print(f"Results saved to: {csv_path}")
 
-    # Save metadata JSON
     json_path = os.path.join(output_dir, f"{filename}_metadata.json")
-    with open(json_path, "w") as f:
-        json.dump(metadata, f, indent=2, default=str)
+    with open(json_path, "w") as fh:
+        json.dump(metadata, fh, indent=2, default=str)
     print(f"Metadata saved to: {json_path}")
 
     return csv_path
 
 
 def load_experiment_metadata(metadata_path: str) -> Dict[str, Any]:
-    """
-    Loads experiment metadata from a JSON file.
+    """Load experiment metadata from a JSON file.
 
     Args:
-        metadata_path: Path to the metadata JSON file
+        metadata_path: Path to the ``*_metadata.json`` file.
 
     Returns:
-        Dictionary with metadata
+        Metadata dictionary.
     """
-    with open(metadata_path, "r") as f:
-        metadata = json.load(f)
-    return metadata
+    with open(metadata_path, "r") as fh:
+        return json.load(fh)
 
 
 def find_experiment_files(
         experiment_name: str,
         output_dir: Optional[str] = None,
-        latest: bool = True, ):
-    """
-    Finds CSV and metadata files for an experiment.
+        latest: bool = True,
+) -> Dict[str, Any]:
+    """Locate CSV and metadata files for an experiment.
 
     Args:
-        experiment_name: Name of the experiment
-        output_dir: Directory to search. If None, uses constants.DATA_PATH.
-        latest: If True, returns only the latest files. If False, returns
-            all matches.
+        experiment_name: Experiment identifier.
+        output_dir: Directory to search. Defaults to ``constants.DATA_PATH``.
+        latest: Return only the most-recently-modified files.
 
     Returns:
-        Dictionary with keys 'csv' and 'metadata' containing file paths,
-        or None if not found.
+        Dict with ``"csv"`` and ``"metadata"`` keys pointing to file paths.
+
+    Raises:
+        FileNotFoundError: If no CSV files are found.
     """
     if output_dir is None:
         output_dir = constants.DATA_PATH
 
-    import glob
-
-    # Find CSV files
     csv_pattern = os.path.join(output_dir, f"{experiment_name}_results.csv")
     csv_files = glob.glob(csv_pattern)
 
-    # Find metadata files
-    metadata_pattern = os.path.join(
+    meta_pattern = os.path.join(
         output_dir, f"{experiment_name}_results_metadata.json"
     )
-    metadata_files = glob.glob(metadata_pattern)
+    meta_files = glob.glob(meta_pattern)
 
     if not csv_files:
-        raise FileNotFoundError("No CSV files found for the experiment.")
+        raise FileNotFoundError(
+            f"No CSV files found matching {csv_pattern}"
+        )
 
     if latest:
-        # Sort by modification time and return latest
         csv_files.sort(key=os.path.getmtime, reverse=True)
-        metadata_files.sort(key=os.path.getmtime, reverse=True)
+        meta_files.sort(key=os.path.getmtime, reverse=True)
         return {
             "csv": csv_files[0] if csv_files else None,
-            "metadata": metadata_files[0] if metadata_files else None,
-        }
-    else:
-        return {
-            "csv": csv_files,
-            "metadata": metadata_files,
+            "metadata": meta_files[0] if meta_files else None,
         }
 
-
-# -----------------------------
-# Transformers
-# -----------------------------
-
-import pyterrier as pt
-from code_base.llm_q import rewrite_single_query
-
-
-class QueryRewriteTransformer(pt.Transformer):
-    """
-    Transformer that reads preprocessed query rewrites from a dataset file.
-    Uses rewrite_single_query to get k rewrites for each query ID.
-    """
-
-    def __init__(self, n: int, dataset_name: str = None):
-        self.n = n
-        if dataset_name is not None:
-            self.dataset_name = dataset_name
-        else:
-            self.dataset_name = constants.DATASET_NAME
-
-    def transform(self, topics_like: pd.DataFrame) -> pd.DataFrame:
-
-        if topics_like.empty:
-            return pd.DataFrame(columns=["qid", "orig_qid", "query"])
-
-        out_rows = []
-        for _, row in topics_like.iterrows():
-            qid = row["qid"]
-            query = row["query"]
-            try:
-                rewrites = [query] + rewrite_single_query(
-                    self.dataset_name, str(qid), self.n - 1
-                )
-            except (ValueError, FileNotFoundError, KeyError) as e:
-                print(
-                    f"Warning: Could not load rewrites for qid {qid}: {e}. Using original query."
-                )
-                rewrites = [query] * self.n
-            for i, rw in enumerate(rewrites):
-                out_rows.append(
-                    {
-                        "qid": f"{qid}_{i}",  # unique sub-qid for each rewrite
-                        "orig_qid": qid,  # store the original qid
-                        "query": preprocess_query(rw),
-                    }
-                )
-        return pd.DataFrame(out_rows)
-
-
-class MergeRewrites(pt.Transformer):
-    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
-        # restore original qid for further dedup/ranking
-        res["qid"] = res["qid"].apply(lambda x: x.split("_")[0])
-        return res
-
-
-class AttachOriginalQuery(pt.Transformer):
-    """
-    Ensure the 'query' column contains the original topic query (needed by MonoT5).
-    """
-
-    def __init__(self, query_lookup: dict):
-        self.query_lookup = {str(k): v for k, v in query_lookup.items()}
-
-    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
-        if res.empty:
-            return res
-
-        res = res.copy()
-        mapped = res["qid"].astype(str).map(self.query_lookup)
-
-        # Fallback to orig_qid if available (e.g., before MergeRewrites)
-        if mapped.isna().any() and "orig_qid" in res.columns:
-            fallback = res.loc[mapped.isna(), "orig_qid"].astype(str).map(
-                self.query_lookup
-            )
-            mapped.fillna(fallback, inplace=True)
-
-        if mapped.isna().any():
-            missing_qids = res.loc[mapped.isna(), "qid"].unique()
-            raise KeyError(
-                f"Could not attach original queries for qids: {missing_qids}. "
-                "Ensure topics include these qids."
-            )
-
-        res["query"] = mapped
-        return res
+    return {"csv": csv_files, "metadata": meta_files}

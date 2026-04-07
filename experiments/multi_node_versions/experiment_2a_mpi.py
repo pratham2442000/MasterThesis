@@ -21,16 +21,16 @@ from code_base.experiment_utils import (
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
+)
+from code_base.transformers import (
     preprocess_query,
     QueryRewriteTransformer,
     MergeRewrites,
-    AttachOriginalQuery
-)
-from code_base.query_trasnformers import (
+    AttachOriginalQuery,
     Dedup,
     BordaVotingTransformerV2,
     CombMAXTransformer,
-    RRFTransformer
+    RRFTransformer,
 )
 
 # -----------------------------------------------------------------------------
@@ -363,7 +363,6 @@ def main():
         # Dense Setup
         model, dense_index = load_dense_model_and_index(rank)
         dense_retriever = model.query_encoder() >> dense_index.retriever()
-        dense_reranker = model.query_encoder() >> dense_index.scorer()
 
         # Reranker
         mono_t5 = load_t5_reranker(constants.T5_BATCH_SIZE, rank)

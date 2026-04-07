@@ -1,304 +1,165 @@
+"""
+Experiment 2b — Rerank-then-Merge (Sparse BM25)
+=================================================
+Same rewrite-sweep as Experiment 2, but the MonoT5 re-ranker is applied
+to *each* rewrite individually **before** the fusion step.
+
+This evaluates whether per-rewrite re-ranking produces better final
+rankings than the merge-then-rerank order of Experiment 2.
+"""
+
 import os
 import sys
 
-# Add parent directory to a path to allow importing constants and code_base
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import numpy as np
-import pandas as pd
 import pyterrier as pt
 from pyterrier.measures import R
 from pyterrier_t5 import MonoT5ReRanker
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 import constants
-from code_base import dataset_factory
-from code_base.experiment_utils import (
-    plot_metrics,
-    save_experiment_results,
-    preprocess_query,
-    plot_with_regression,
-    QueryRewriteTransformer,
+from code_base.experiment_runner import ExperimentRunner
+from code_base.transformers import (
+    BordaVotingTransformerV2,
+    CombMAXTransformer,
+    Dedup,
     MergeRewrites,
-    AttachOriginalQuery
-)
-from code_base.query_trasnformers import Dedup, BordaVotingTransformerV2, CombMAXTransformer, RRFTransformer
-
-# -----------------------------
-# Configuration (from constants.py)
-# -----------------------------
-DATA_PATH = constants.DATA_PATH
-RESULTS_PATH = DATA_PATH + "/experiment_results/experiment_2b"
-
-if os.path.exists(RESULTS_PATH):
-    print(f"Results directory {RESULTS_PATH} already exists.")
-else:
-    os.makedirs(RESULTS_PATH)
-    print(f"Created results directory at {RESULTS_PATH}.")
-
-DATA_SPLIT = constants.DATA_SPLIT
-INDEX_PATH = constants.INDEX_PATH
-
-# Experiment controls
-TOPIC_LIMIT = constants.EXPERIMENT_2_TOPIC_LIMIT
-N_REWRITES = constants.EXPERIMENT_2_N_REWRITES
-EVAL_METRICS = constants.EXPERIMENT_2_EVAL_METRICS
-RETRIEVAL_CUTOFF = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
-
-# Reranker
-T5_BATCH_SIZE = constants.T5_BATCH_SIZE
-EXPERIMENT_BATCH_SIZE = constants.EXPERIMENT_BATCH_SIZE
-
-# -----------------------------
-# Data
-# -----------------------------
-print("Loading data...")
-docs_df, topics_df, qrels_df = dataset_factory.get_dataset(constants.DATASET_NAME, DATA_SPLIT)
-
-topics_df["query"] = topics_df["query"].apply(preprocess_query)
-topics = topics_df[:TOPIC_LIMIT]
-QUERY_LOOKUP = {str(row["qid"]): row["query"] for _, row in topics.iterrows()}
-
-index_ref = pt.IndexFactory.of(INDEX_PATH)
-bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
-mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
-
-
-
-# -----------------------------
-# Experiment
-# -----------------------------
-print("\n\n\n")
-print("Running experiment 2b (Rerank then Merge)...")
-
-results_list = []
-attach_query = AttachOriginalQuery(QUERY_LOOKUP)
-
-for N in N_REWRITES:
-    rewrite = QueryRewriteTransformer(N, dataset_name=constants.DATASET_NAME)
-
-    dedup = Dedup()
-
-    # Borda voting transformers
-    borda_voting = BordaVotingTransformerV2(
-        cutoff=RETRIEVAL_CUTOFF, weight=None, method="borda"
-    )
-    borda_voting_weighted = BordaVotingTransformerV2(
-        cutoff=RETRIEVAL_CUTOFF,
-        weight=lambda x: np.exp(x * 0.1),  # Exponential weighting
-        method="borda",
-    )
-
-    # Baseline BM25 on original queries
-    bm25_base = bm25 % RETRIEVAL_CUTOFF
-
-    # Baseline BM25 + MonoT5 (Standard pipeline)
-    pipeline_bm25_t5 = (
-            bm25 % RETRIEVAL_CUTOFF
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-    )
-
-    # Pipeline 1: Dedup method (Rerank EACH rewrite, then merge)
-    # rewrite -> bm25 -> text -> monoT5 -> merge_qids -> dedup
-    pipeline_dedup = (
-            rewrite
-            >> bm25 % RETRIEVAL_CUTOFF
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-            >> MergeRewrites()
-            >> dedup
-    )
-
-    # Pipeline 2: Borda voting method
-    # rewrite -> bm25 -> text -> monoT5 -> borda (borda handles merge)
-    pipeline_borda = (
-            rewrite
-            >> bm25 % RETRIEVAL_CUTOFF
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-            >> borda_voting
-    )
-
-    # Pipeline 3: Borda voting with weighted scores
-    pipeline_borda_weighted = (
-            rewrite
-            >> bm25 % RETRIEVAL_CUTOFF
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-            >> borda_voting_weighted
-    )
-
-    # Pipeline 4: CombMAX (Rerank EACH rewrite, then CombMAX merge)
-    pipeline_combmax = (
-            rewrite
-            >> bm25 % RETRIEVAL_CUTOFF
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-            >> MergeRewrites()
-            >> CombMAXTransformer()
-    )
-
-    # Pipeline 5: RRF (Rerank EACH rewrite, then RRF merge)
-    pipeline_rrf = (
-            rewrite
-            >> bm25 % RETRIEVAL_CUTOFF
-            >> pt.text.get_text(index_ref, "text")
-            >> mono_t5_reranker
-            >> MergeRewrites()
-            >> RRFTransformer()
-    )
-
-    # Define metrics for this iteration
-    current_metrics = EVAL_METRICS + [R @ RETRIEVAL_CUTOFF]
-
-    experiment_results = pt.Experiment(
-        [
-            bm25_base,
-            pipeline_bm25_t5,
-            pipeline_dedup,
-            pipeline_borda,
-            pipeline_borda_weighted,
-            pipeline_combmax,
-            pipeline_rrf,
-        ],
-        topics,
-        qrels_df,
-        eval_metrics=current_metrics,
-        names=[
-            "BM25",
-            "BM25_MonoT5",
-            "Pipeline_Dedup",
-            "Pipeline_Borda",
-            "Pipeline_BordaWeighted",
-            "Pipeline_CombMAX",
-            "Pipeline_RRF",
-        ],
-        verbose=True,
-        batch_size=EXPERIMENT_BATCH_SIZE,
-        precompute_prefix=True
-    )
-
-    # Collect results for this 'N'
-    row_data = {"n": N}
-
-    for _, exp_row in experiment_results.iterrows():
-        system_name = exp_row["name"]
-        for metric in current_metrics:
-            metric_str = str(metric)
-            val = exp_row[metric_str]
-
-            # Map dynamic R@c to fixed column name "R@c" for consistency
-            if metric_str == f"R@{RETRIEVAL_CUTOFF}":
-                key = f"{system_name}_R@c"
-            else:
-                key = f"{system_name}_{metric_str}"
-
-            row_data[key] = val
-
-    results_list.append(row_data)
-
-    print("\n\n")
-
-    print(
-        f"n={N}: BM25 R@10={row_data.get('BM25_R@10', 0):.4f}, "
-        f"BM25 + MonoT5 R@10={row_data.get('BM25_MonoT5_R@10', 0):.4f},"
-        f"Dedup R@10={row_data.get('Pipeline_Dedup_R@10', 0):.4f}, "
-        f"Borda R@10={row_data.get('Pipeline_Borda_R@10', 0):.4f}, "
-        f"BordaWeighted R@10={row_data.get('Pipeline_BordaWeighted_R@10', 0):.4f}, "
-        f"CombMAX R@10={row_data.get('Pipeline_CombMAX_R@10', 0):.4f}, "
-        f"RRF R@10={row_data.get('Pipeline_RRF_R@10', 0):.4f}, "
-        f"BM25 NDCG@10={row_data.get('BM25_nDCG@10', 0):.4f}, "
-        f"BM25 + MonoT5 NDCG@10={row_data.get('BM25_MonoT5_nDCG@10', 0):.4f}, "
-        f"Dedup NDCG@10={row_data.get('Pipeline_Dedup_nDCG@10', 0):.4f}, "
-        f"Borda NDCG@10={row_data.get('Pipeline_Borda_nDCG@10', 0):.4f}, "
-        f"BordaWeighted NDCG@10={row_data.get('Pipeline_BordaWeighted_nDCG@10', 0):.4f}, "
-        f"CombMAX NDCG@10={row_data.get('Pipeline_CombMAX_nDCG@10', 0):.4f}, "
-        f"RRF NDCG@10={row_data.get('Pipeline_RRF_nDCG@10', 0):.4f}"
-    )
-
-results_df = pd.DataFrame(results_list)
-
-save_experiment_results(
-    results_df,
-    experiment_name="experiment_2b",
-    output_dir=RESULTS_PATH,
-    filename="experiment_2b_results",
+    QueryRewriteTransformer,
+    RRFTransformer,
 )
 
-print(results_df)
 
-plot_metrics(
-    results_df,
-    x_col="n",
-    metric_cols=[
-        "BM25_R@10",
-        "BM25_MonoT5_R@10",
-        "Pipeline_Dedup_R@10",
-        "Pipeline_Borda_R@10",
-        "Pipeline_BordaWeighted_R@10",
-        "Pipeline_CombMAX_R@10",
-        "Pipeline_RRF_R@10",
-    ],
-    labels=[
-        "BM25 Baseline",
-        "BM25 + MonoT5",
-        "Dedup Method",
-        "Borda Voting",
-        "Borda Weighted",
-        "CombMAX",
-        "RRF",
-    ],
-    title="Experiment 2b: Document Combination Methods Comparison (Rerank First)",
-    xlabel="Number of Rewrites",
-    filename="/n_rewrites_vs_R_comparison.png",
-    use_log_scale=False,
-    output_dir=RESULTS_PATH,
-)
+# ─── Pipeline Factory ────────────────────────────────────
 
-plot_metrics(
-    results_df,
-    x_col="n",
-    metric_cols=[
-        "BM25_nDCG@10",
-        "BM25_MonoT5_nDCG@10",
-        "Pipeline_Dedup_nDCG@10",
-        "Pipeline_Borda_nDCG@10",
-        "Pipeline_BordaWeighted_nDCG@10",
-        "Pipeline_CombMAX_nDCG@10",
-        "Pipeline_RRF_nDCG@10",
-    ],
-    labels=[
-        "BM25 Baseline",
-        "BM25+MonoT5",
-        "Dedup Method",
-        "Borda Voting",
-        "Borda Weighted",
-        "CombMAX",
-        "RRF",
-    ],
-    title="Experiment 2b: Document Combination Methods Comparison (nDCG@10)",
-    xlabel="Number of Rewrites",
-    filename="/n_rewrites_vs_nDCG_comparison.png",
-    use_log_scale=False,
-    output_dir=RESULTS_PATH,
-)
+def build_pipelines(n, *, index_ref, reranker, cutoff):
+    """Construct rerank-then-merge pipelines for *n* rewrites.
 
-plot_with_regression(
-    results_df,
-    x_col="n",
-    metric_cols=[
-        "BM25_R@10",
-        "BM25_MonoT5_R@10",
-        "Pipeline_Dedup_R@10",
-        "Pipeline_Borda_R@10",
-        "Pipeline_BordaWeighted_R@10",
-        "Pipeline_CombMAX_R@10",
-        "Pipeline_RRF_R@10",
-    ],
-    title="Experiment 2b: R@10 vs Number of Rewrites (All Methods)",
-    xlabel="Number of Rewrites",
-    ylabel="R@10",
-    filename="/n_rewrites_vs_R_regression_all_methods.png",
-    use_log_scale=False,
-    output_dir=RESULTS_PATH,
-)
+    Args:
+        n: Number of query rewrites.
+        index_ref: PyTerrier index reference.
+        reranker: MonoT5ReRanker instance.
+        cutoff: BM25 retrieval cutoff.
+
+    Returns:
+        Dict of ``{system_name: pipeline}``.
+    """
+    rewrite = QueryRewriteTransformer(n, dataset_name=constants.DATASET_NAME)
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
+    get_text = pt.text.get_text(index_ref, "text")
+
+    # Shared rerank-per-rewrite prefix
+    rewrite_bm25_rerank = rewrite >> bm25 >> get_text >> reranker
+
+    return {
+        "BM25": bm25,
+        "BM25_MonoT5": bm25 >> get_text >> reranker,
+        "Pipeline_Dedup": (
+                rewrite_bm25_rerank >> MergeRewrites() >> Dedup()
+        ),
+        "Pipeline_Borda": (
+                rewrite_bm25_rerank
+                >> BordaVotingTransformerV2(cutoff=cutoff)
+        ),
+        "Pipeline_BordaWeighted": (
+                rewrite_bm25_rerank
+                >> BordaVotingTransformerV2(
+            cutoff=cutoff, weight=lambda x: np.exp(x * 0.1)
+        )
+        ),
+        "Pipeline_CombMAX": (
+                rewrite_bm25_rerank >> MergeRewrites() >> CombMAXTransformer()
+        ),
+        "Pipeline_RRF": (
+                rewrite_bm25_rerank >> MergeRewrites() >> RRFTransformer()
+        ),
+    }
+
+
+# ─── Plot Configuration ──────────────────────────────────
+
+SYSTEMS = [
+    ("BM25", "BM25 Baseline"),
+    ("BM25_MonoT5", "BM25 + MonoT5"),
+    ("Pipeline_Dedup", "Dedup Method"),
+    ("Pipeline_Borda", "Borda Voting"),
+    ("Pipeline_BordaWeighted", "Borda Weighted"),
+    ("Pipeline_CombMAX", "CombMAX"),
+    ("Pipeline_RRF", "RRF"),
+]
+
+PLOT_CONFIGS = [
+    {
+        "type": "metrics",
+        "x_col": "n",
+        "metric_cols": [f"{s}_R@10" for s, _ in SYSTEMS],
+        "labels": [lbl for _, lbl in SYSTEMS],
+        "title": "Experiment 2b: Rerank-then-Merge (Recall)",
+        "xlabel": "Number of Rewrites",
+        "filename": "n_rewrites_vs_R_comparison.png",
+        "use_log_scale": False,
+    },
+    {
+        "type": "metrics",
+        "x_col": "n",
+        "metric_cols": [f"{s}_nDCG@10" for s, _ in SYSTEMS],
+        "labels": [lbl for _, lbl in SYSTEMS],
+        "title": "Experiment 2b: Rerank-then-Merge (nDCG@10)",
+        "xlabel": "Number of Rewrites",
+        "filename": "n_rewrites_vs_nDCG_comparison.png",
+        "use_log_scale": False,
+    },
+    {
+        "type": "regression",
+        "x_col": "n",
+        "metric_cols": [f"{s}_R@10" for s, _ in SYSTEMS],
+        "labels": [lbl for _, lbl in SYSTEMS],
+        "title": "Experiment 2b: R@10 vs Rewrites (All Methods)",
+        "xlabel": "Number of Rewrites",
+        "ylabel": "R@10",
+        "filename": "n_rewrites_vs_R_regression_all_methods.png",
+        "use_log_scale": False,
+    },
+]
+
+
+# ─── Main ─────────────────────────────────────────────────
+
+def main():
+    """Run Experiment 2b."""
+    cutoff = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
+
+    runner = ExperimentRunner(
+        name="experiment_2b",
+        results_subdir="exp2b",
+        topic_limit=constants.EXPERIMENT_2_TOPIC_LIMIT,
+        eval_metrics=constants.EXPERIMENT_2_EVAL_METRICS + [R @ cutoff],
+    )
+
+    results_dir = runner.setup()
+    topics, qrels, _ = runner.load_data(
+        filter_by_rewrites=True, use_tail=True,
+    )
+
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+    mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
+
+    results_df = runner.run_sweep(
+        sweep_values=constants.EXPERIMENT_2_N_REWRITES,
+        sweep_param="n",
+        pipeline_factory=build_pipelines,
+        topics=topics,
+        qrels=qrels,
+        factory_kwargs={
+            "index_ref": index_ref,
+            "reranker": mono_t5,
+            "cutoff": cutoff,
+        },
+    )
+
+    runner.save(results_df, results_dir)
+    runner.plot(results_df, results_dir, PLOT_CONFIGS)
+
+
+if __name__ == "__main__":
+    main()

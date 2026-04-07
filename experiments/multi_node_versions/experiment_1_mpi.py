@@ -18,8 +18,8 @@ from code_base.experiment_utils import (
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
-    preprocess_query
 )
+from code_base.transformers import preprocess_query
 
 def main():
 # -----------------------------
@@ -60,11 +60,11 @@ def main():
         # Configuration
         # -----------------------------
         DATA_PATH = constants.DATA_PATH
-        RESULTS_PATH = constants.RESULTS_PATH
+        RESULTS_PATH = os.path.join(constants.RESULTS_PATH, "exp1")
         
         if rank == 0:     
             if not os.path.exists(RESULTS_PATH):
-                os.makedirs(RESULTS_PATH)
+                os.makedirs(RESULTS_PATH, exist_ok=True)
                 logging.info(f"Created results directory at {RESULTS_PATH}.")
             else:
                  logging.info(f"Results directory {RESULTS_PATH} already exists.")
