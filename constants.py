@@ -60,7 +60,7 @@ DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 
 # ==================== Experiment 1 Configuration ====================
 EXPERIMENT_1_TOPIC_LIMIT = 500
-EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 500, num=10, dtype=int)]
+EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 200, num=5, dtype=int)]
 EXPERIMENT_1_EVAL_METRICS = [R @ 10, nDCG @ 10]
 
 # ==================== Experiment 2 Configuration ====================
@@ -79,6 +79,18 @@ EXPERIMENT_3_BEST_N_REWRITES = 10
 EXPERIMENT_3_C_VALUES = [int(i) for i in np.geomspace(10, 100, num=10, dtype=int)]
 EXPERIMENT_3_EVAL_METRICS = [R @ 10, nDCG @ 10]
 
+# ==================== Experiment 4 Configuration (ORE) ==============
+EXPERIMENT_4_TOPIC_LIMIT = 500
+EXPERIMENT_4_C_VALUES = [int(i) for i in np.geomspace(10, 500, num=10, dtype=int)]
+EXPERIMENT_4_EVAL_METRICS = [R @ 10, nDCG @ 10]
+EXPERIMENT_4_FLEX_INDEX_PATH = "macavaney/msmarco-passage-v2-dedup.tcthnp.flex"
+EXPERIMENT_4_CORPUS_GRAPH = "macavaney/msmarco-passage.corpusgraph.bm25.16"
+EXPERIMENT_4_LAFF_GRAPH = "macavaney/msmarco-passage.corpusgraph.bm25.128.laff"
+EXPERIMENT_4_LAFF_K = 16
+EXPERIMENT_4_CROSS_ENC_BUDGET = 7
+EXPERIMENT_4_TOP_S1 = 25
+EXPERIMENT_4_TOP_S2 = 15
+
 # ==================== Reranker Configuration ====================
 T5_BATCH_SIZE = 16
 EXPERIMENT_BATCH_SIZE = 10
@@ -92,6 +104,11 @@ LLM_MODEL_NAME = "gpt-4o-mini"
 REQUIRE_API_PERMISSION = True
 
 # ==================== RAG Generation Configuration ====================
-RAG_MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
+OFFLINE_MODE = True
+MODELS_CACHE_DIR = "./models"  # Path to local offline models
+RAG_MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
+RERANKER_MODEL_NAME = "castorini/monot5-base-msmarco"
+DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
+
 RAG_MODEL_MAX_NEW_TOKENS = 128
 RAG_CONCATENATOR_TOP_K = 5

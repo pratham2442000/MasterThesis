@@ -214,3 +214,6 @@ index/
 .cursor/
 TODO
 /models/*
+/results/exp*/plots/*
+/results/latex_tables/*
+.agent/*
