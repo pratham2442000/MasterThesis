@@ -4,7 +4,7 @@ Experiment 2a — Dense Retrieval + Fusion
 Same rewrite-sweep as Experiment 2 but using TCT-ColBERT dense retrieval
 instead of (or combined with) BM25.
 
-Requires a pre-built dense index (see ``dataset_setup.py --steps dense``).
+Requires a pre-built dense index (see ``scripts/dataset_setup.py --steps dense``).
 """
 
 import os
