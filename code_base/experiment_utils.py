@@ -282,6 +282,102 @@ def plot_with_regression(
 
 
 # ─────────────────────────────────────────────
+# RAG Pipeline Builders
+# ─────────────────────────────────────────────
+
+def build_retrieval_pipeline(index_ref, reranker, cutoff):
+    """BM25 + T5 reranker (retrieval-only, no generation).
+
+    Args:
+        index_ref: PyTerrier index reference.
+        reranker: Reranker transformer (e.g. MonoT5ReRanker).
+        cutoff: BM25 retrieval cutoff.
+
+    Returns:
+        Tuple of ``(bm25_baseline, retrieval_pipeline)``.
+    """
+    import pyterrier as pt
+
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
+    bm25_retrieved = bm25 % cutoff
+
+    pipeline = (
+            bm25_retrieved
+            >> pt.text.get_text(index_ref, "text")
+            >> reranker
+    )
+    return bm25_retrieved, pipeline
+
+
+def build_rag_pipeline(retrieval_pipeline, reader, top_k):
+    """Full RAG: Retrieve + Rerank → Concatenate top-k → Generate answer.
+
+    Args:
+        retrieval_pipeline: A PyTerrier retrieval pipeline.
+        reader: A RAG reader transformer (e.g. pyterrier_rag Reader).
+        top_k: Number of passages to concatenate for the generator.
+
+    Returns:
+        Complete RAG pipeline.
+    """
+    from pyterrier_rag.prompt import Concatenator
+
+    concat = Concatenator(max_elements=top_k)
+    rag_pipeline = retrieval_pipeline >> concat >> reader
+    return rag_pipeline
+
+
+def get_reader(live: bool):
+    """Returns the RAG reader.
+
+    Args:
+        live: If False, returns a DummyReader (no model).
+              If True, returns a pyterrier_rag Reader with HuggingFaceBackend.
+
+    Returns:
+        A PyTerrier Transformer that produces ``qanswer`` column.
+    """
+    if not live:
+        import pyterrier as pt
+
+        class DummyReader(pt.Transformer):
+            def transform(self, inp):
+                result = inp.copy()
+                if "qcontext" in result.columns:
+                    result["qanswer"] = result["qcontext"].apply(
+                        lambda ctx: f"Dummy answer based on: {str(ctx)[:50]}"
+                    )
+                else:
+                    result["qanswer"] = "no context available"
+                return result
+
+        print("Using DummyReader (test mode — no model loaded)")
+        return DummyReader()
+
+    model_id = constants.RAG_MODEL_NAME
+    if getattr(constants, "OFFLINE_MODE", False):
+        local_path = os.path.join(constants.MODELS_CACHE_DIR, model_id.split('/')[-1])
+        if os.path.exists(local_path):
+            model_id = local_path
+            print(f"Loading offline HuggingFace model from local cache: {model_id}")
+        else:
+            print(f"Loading HF model {model_id} (offline mode env set, relying on HF cache)")
+    else:
+        print(f"Loading HuggingFace model: {model_id}")
+
+    from pyterrier_rag import HuggingFaceBackend
+    from pyterrier_rag.readers import Reader
+
+    backend = HuggingFaceBackend(
+        model_id,
+        max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
+        generation_args={"temperature": 0.1},
+    )
+    reader = Reader(backend)
+    return reader
+
+
+# ─────────────────────────────────────────────
 # Metadata & Result I/O
 # ─────────────────────────────────────────────
 

@@ -27,10 +27,9 @@ import pandas as pd
 import pyterrier as pt
 from pyterrier.measures import R, nDCG
 
-from code_base import dataset_factory
-from code_base.transformers import preprocess_query
 from code_base.wiki_loader_pyt import get_gold_answers
 from code_base.experiment_runner import ExperimentRunner
+from code_base import dataset_factory
 
 # pyterrier-rag imports
 from pyterrier_rag.prompt import Concatenator
@@ -158,6 +157,167 @@ def rag_pipeline_factory(cutoff, *, index_ref, reranker, reader):
 
 
 # ---------------------------------------------------------
+# Single-query diagnostic test
+# ---------------------------------------------------------
+def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = None):
+    """
+    Run ONE query through every pipeline stage.
+    Prints intermediate output at each step to diagnose issues.
+
+    Args:
+        live: Use real models (True) or dummy/passthrough (False).
+        cutoff: BM25 retrieval cutoff.
+        split_override: Force a specific data split (e.g. "dev").
+    """
+    from code_base.transformers import preprocess_query
+
+    print("=" * 60)
+    print("SINGLE-QUERY DIAGNOSTIC TEST")
+    print("=" * 60)
+
+    # --- Step 0: Determine split and warn about answers ---
+    active_split = split_override or constants.DATA_SPLIT
+    print(f"\n[STEP 0] Data split: '{active_split}'")
+
+    if active_split == "test":
+        print("  !! WARNING: 'test' split has EMPTY answers !!")
+        print("  !! RAG metrics (EM/F1) will always be 0   !!")
+        print("  !! Use --split dev for real answers        !!")
+
+    # --- Step 1: Load data ---
+    print(f"\n[STEP 1] Loading data (split={active_split})...")
+    _, topics_df, qrels_df = dataset_factory.get_dataset(
+        constants.DATASET_NAME, active_split
+    )
+    topics_df["query"] = topics_df["query"].apply(preprocess_query)
+
+    # Take first query only
+    single_topic = topics_df.iloc[[3]]
+    qid = single_topic.iloc[0]["qid"]
+    query = single_topic.iloc[0]["query"]
+    answer = single_topic.iloc[0].get("answer", "")
+
+    print(f"  qid:    {qid}")
+    print(f"  query:  {query}")
+    print(f"  answer: '{answer}'")
+
+    if not answer or answer.strip() == "":
+        print("  !! PROBLEM: Gold answer is EMPTY !!")
+        print("  !! EM/F1 will be meaningless     !!")
+    else:
+        print("  ✓ Gold answer present")
+
+    # Gold answers DF
+    gold_answers = get_gold_answers(single_topic)
+    print(f"\n  Gold answers DataFrame:")
+    print(gold_answers.to_string(index=False))
+
+    # Qrels for this query
+    query_qrels = qrels_df[qrels_df["qid"] == qid]
+    print(f"\n  Qrels for qid={qid}: {len(query_qrels)} relevant docs")
+    if len(query_qrels) > 0:
+        print(query_qrels.head(5).to_string(index=False))
+    else:
+        print("  !! WARNING: No qrels found for this query !!")
+
+    # --- Step 2: Setup index ---
+    print(f"\n[STEP 2] Loading index from {constants.INDEX_PATH}...")
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+    index = pt.IndexFactory.of(constants.INDEX_PATH)
+    print(f"  Index docs: {index.getCollectionStatistics().getNumberOfDocuments()}")
+    print(f"  ✓ Index loaded")
+
+    # --- Step 3: BM25 retrieval ---
+    print(f"\n[STEP 3] BM25 retrieval (cutoff={cutoff})...")
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
+    bm25_cut = bm25 % cutoff
+
+    bm25_results = bm25_cut.transform(single_topic)
+    print(f"  Retrieved {len(bm25_results)} docs")
+    if len(bm25_results) == 0:
+        print("  !! PROBLEM: BM25 returned 0 results !!")
+        return
+    print(f"  Top-3 docnos: {bm25_results['docno'].head(3).tolist()}")
+    print(f"  Score range: [{bm25_results['score'].min():.4f}, {bm25_results['score'].max():.4f}]")
+    print(f"  Columns: {list(bm25_results.columns)}")
+
+    # --- Step 4: Get text ---
+    print(f"\n[STEP 4] Fetching document text...")
+    text_pipe = pt.text.get_text(index_ref, "text")
+    with_text = text_pipe.transform(bm25_results)
+
+    if "text" not in with_text.columns:
+        print("  !! PROBLEM: 'text' column missing after get_text !!")
+        print(f"  Columns: {list(with_text.columns)}")
+        return
+
+    empty_text_count = (with_text["text"].str.strip() == "").sum()
+    null_text_count = with_text["text"].isna().sum()
+    print(f"  Docs with text: {len(with_text)}")
+    print(f"  Empty text: {empty_text_count}, Null text: {null_text_count}")
+    print(f"  Sample text (first 200 chars): {with_text.iloc[0]['text'][:200]}")
+    print(f"  ✓ Text fetched")
+
+    # --- Step 5: Reranking ---
+    print(f"\n[STEP 5] Reranking...")
+    if live:
+        from pyterrier_t5 import MonoT5ReRanker
+        reranker = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
+        print("  Using MonoT5ReRanker")
+    else:
+        reranker = PassthroughReranker()
+        print("  Using PassthroughReranker (test mode)")
+
+    reranked = reranker.transform(with_text)
+    print(f"  Reranked {len(reranked)} docs")
+    print(f"  Top-3 scores: {reranked['score'].head(3).tolist()}")
+    print(f"  ✓ Reranking done")
+
+    # --- Step 6: Concatenation ---
+    print(f"\n[STEP 6] Context concatenation (top_k={constants.RAG_CONCATENATOR_TOP_K})...")
+    concat = Concatenator(max_elements=constants.RAG_CONCATENATOR_TOP_K)
+    concatenated = concat.transform(reranked)
+
+    print(f"  Output rows: {len(concatenated)}")
+    print(f"  Columns: {list(concatenated.columns)}")
+
+    if "qcontext" in concatenated.columns:
+        ctx = concatenated.iloc[0]["qcontext"]
+        print(f"  Context length: {len(str(ctx))} chars")
+        print(f"  Context preview (first 300 chars):")
+        print(f"    {str(ctx)[:300]}")
+        print(f"  ✓ Context built")
+    else:
+        print("  !! PROBLEM: 'qcontext' column missing !!")
+        print("  !! Concatenator output unexpected     !!")
+
+    # --- Step 7: Generation ---
+    print(f"\n[STEP 7] Answer generation...")
+    reader = get_reader(live)
+    generated = reader.transform(concatenated)
+
+    if "qanswer" in generated.columns:
+        gen_answer = generated.iloc[0]["qanswer"]
+        print(f"  Generated answer: '{gen_answer}'")
+        print(f"  ✓ Generation complete")
+    else:
+        print("  !! PROBLEM: 'qanswer' column missing !!")
+        print(f"  Columns: {list(generated.columns)}")
+
+    # --- Step 8: Compare with gold ---
+    print(f"\n[STEP 8] Comparison...")
+    print(f"  Gold answer:      '{answer}'")
+    if "qanswer" in generated.columns:
+        print(f"  Generated answer: '{generated.iloc[0]['qanswer']}'")
+    else:
+        print("  No generated answer to compare")
+
+    print("\n" + "=" * 60)
+    print("DIAGNOSTIC COMPLETE")
+    print("=" * 60)
+
+
+# ---------------------------------------------------------
 # Main
 # ---------------------------------------------------------
 def main():
@@ -174,7 +334,24 @@ def main():
         "--cutoff", type=int, default=20,
         help="BM25 retrieval cutoff (default: 20)"
     )
+    parser.add_argument(
+        "--single-query", action="store_true",
+        help="Run single-query diagnostic test instead of full sweep"
+    )
+    parser.add_argument(
+        "--split", type=str, default=None,
+        help="Override data split (e.g. 'dev' for real answers)"
+    )
     args = parser.parse_args()
+
+    # Single-query diagnostic mode
+    if args.single_query:
+        run_single_query_test(
+            live=args.live,
+            cutoff=args.cutoff,
+            split_override=args.split,
+        )
+        return
 
     # ---- 1. Load Data via ExperimentRunner ----
     print("=" * 60)
