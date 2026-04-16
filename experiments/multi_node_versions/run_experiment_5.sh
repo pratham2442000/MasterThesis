@@ -6,7 +6,7 @@
 #SBATCH --ntasks=2
 #SBATCH --cpus-per-task=2
 #SBATCH --gpus-per-task=1
-#SBATCH --mem-per-cpu=8GB
+#SBATCH --mem-per-cpu=5GB
 
 module load 2025
 module load miniconda3
