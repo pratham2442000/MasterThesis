@@ -9,6 +9,7 @@ dictionaries below.
 """
 
 import numpy as np
+import pyterrier_rag.measures as rag_measures
 from pyterrier.measures import R, nDCG
 
 # ==================== Dataset Selection ====================
@@ -90,6 +91,13 @@ EXPERIMENT_4_LAFF_K = 16
 EXPERIMENT_4_CROSS_ENC_BUDGET = 7
 EXPERIMENT_4_TOP_S1 = 25
 EXPERIMENT_4_TOP_S2 = 15
+
+# ==================== Experiment 5 Configuration (Full RAG) =====
+EXPERIMENT_5_TOPIC_LIMIT = 500
+EXPERIMENT_5_C_VALUES = [int(i) for i in np.geomspace(10, 200, num=5, dtype=int)]
+EXPERIMENT_5_RETRIEVAL_METRICS = [R @ 10, R @ 100]
+EXPERIMENT_5_EVAL_METRICS = [rag_measures.EM, rag_measures.F1]
+EXPERIMENT_5_TOP_K = 5  # Passages fed to generator
 
 # ==================== Reranker Configuration ====================
 T5_BATCH_SIZE = 16
