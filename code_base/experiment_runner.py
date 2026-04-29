@@ -306,13 +306,9 @@ class ExperimentRunner:
             for metric in eval_metrics:
                 metric_str = str(metric)
                 val = exp_row[metric_str]
-
-                if metric_str == f"R@{sweep_value}":
-                    key = f"{system_name}_R@c"
-                else:
-                    key = f"{system_name}_{metric_str}"
-
+                key = f"{system_name}_{metric_str}"
                 row[key] = val
+
         return row
 
     @staticmethod
