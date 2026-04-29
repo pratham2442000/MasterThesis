@@ -20,8 +20,8 @@ DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage"
 _DATASET_CONFIGS = {
     "wiki_musique": {
         "DATA_PATH": (
-            # "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
+             "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
+#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
         ),
         "DATA_SPLIT": "dev",
         "INDEX_PATH": "./index/wiki_musique_index/data.properties",
@@ -35,8 +35,8 @@ _DATASET_CONFIGS = {
     },
     "msmarco-passage": {
         "DATA_PATH": (
-            # "/scratch/pjohari/MasterThesis/data/msmarco-passage"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
+             "/scratch/pjohari/MasterThesis/data/msmarco-passage"
+#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
         ),
         "DATA_SPLIT": "19",  # -> irds:msmarco-passage/trec-dl-2019/judged
         "INDEX_PATH": "./index/msmarco_passage_index/data.properties",
@@ -53,8 +53,8 @@ DENSE_INDEX_PATH = _DATASET_CONFIGS[DATASET_NAME]["DENSE_INDEX_PATH"]
 EXPERIMENT_2_TYPE_DISTRIBUTION = _DATASET_CONFIGS[DATASET_NAME]["TYPE_DISTRIBUTION"]
 
 RESULTS_PATH = (
-    # "/scratch/pjohari/MasterThesis/results/"
-    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
+     "/scratch/pjohari/MasterThesis/results/"
+#    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
 )
 
 DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
@@ -93,8 +93,8 @@ EXPERIMENT_4_TOP_S1 = 25
 EXPERIMENT_4_TOP_S2 = 15
 
 # ==================== Experiment 5 Configuration (Full RAG) =====
-EXPERIMENT_5_TOPIC_LIMIT = 500
-EXPERIMENT_5_C_VALUES = [int(i) for i in np.geomspace(10, 200, num=5, dtype=int)]
+EXPERIMENT_5_TOPIC_LIMIT = 250
+EXPERIMENT_5_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=int)]
 EXPERIMENT_5_RETRIEVAL_METRICS = [R @ 10, R @ 100]
 EXPERIMENT_5_EVAL_METRICS = [rag_measures.EM, rag_measures.F1]
 EXPERIMENT_5_TOP_K = 5  # Passages fed to generator

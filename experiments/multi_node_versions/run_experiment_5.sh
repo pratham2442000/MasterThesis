@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=exp5_rag_mpi
-#SBATCH --time=20:00:00
+#SBATCH --time=15:00:00
 #SBATCH --account=education-eemcs-msc-dsait
-#SBATCH --partition=gpu
-#SBATCH --ntasks=2
-#SBATCH --cpus-per-task=2
+#SBATCH --partition=gpu-a100
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
 #SBATCH --gpus-per-task=1
-#SBATCH --mem-per-cpu=5GB
+#SBATCH --mem-per-cpu=8000MB
 
 module load 2025
 module load miniconda3
