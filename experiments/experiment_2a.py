@@ -18,6 +18,8 @@ from pyterrier_t5 import MonoT5ReRanker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from code_base.experiment_utils import get_text_getter
+
 import constants
 from code_base.experiment_runner import ExperimentRunner
 from code_base.transformers import (
@@ -57,7 +59,7 @@ def build_pipelines(
     """
     rewrite = QueryRewriteTransformer(n, dataset_name=constants.DATASET_NAME)
     attach = AttachOriginalQuery(query_lookup)
-    get_text = pt.text.get_text(index_ref, "text")
+    get_text = get_text_getter(index_ref)
 
     dense_base = dense_retriever % cutoff
 

@@ -7,12 +7,12 @@ Runs all setup steps needed before experiments can execute:
   3. Build dense index (needed for experiment 2a, optional)
 
 Usage:
-    python experiments/dataset_setup.py                  # run all steps
-    python experiments/dataset_setup.py --steps index     # BM25 index only
-    python experiments/dataset_setup.py --steps rewrites  # query rewrites only
-    python experiments/dataset_setup.py --steps dense     # dense index only
-    python experiments/dataset_setup.py --steps index rewrites  # multiple steps
-    python experiments/dataset_setup.py --skip-dense      # all except dense
+    python scripts/dataset_setup.py                  # run all steps
+    python scripts/dataset_setup.py --steps index     # BM25 index only
+    python scripts/dataset_setup.py --steps rewrites  # query rewrites only
+    python scripts/dataset_setup.py --steps dense     # dense index only
+    python scripts/dataset_setup.py --steps index rewrites  # multiple steps
+    python scripts/dataset_setup.py --skip-dense      # all except dense
 
 All configuration is read from constants.py. To switch datasets,
 change constants.DATASET_NAME and re-run this script.
@@ -32,7 +32,12 @@ from code_base.dataset_factory import get_dataset
 
 
 def step_build_bm25_index():
-    """Step 1: Build BM25 index from the dataset corpus."""
+    """Step 1: Build BM25 index from the dataset corpus.
+
+    For MSMARCO-passage, first tries to use PyTerrier's pre-built index
+    via ``pt.get_dataset('msmarco_passage').get_index('terrier_stemmed')``.
+    Falls back to building from corpus if the pre-built index is unavailable.
+    """
     print("\n" + "=" * 60)
     print("STEP 1: Building BM25 Index")
     print("=" * 60)
@@ -41,24 +46,70 @@ def step_build_bm25_index():
     print(f"  Dataset: {constants.DATASET_NAME}")
     print(f"  Index Directory: {INDEX_DIR}")
 
-    # Check if index already exists
+    # Check if index already exists at the configured path
     if os.path.exists(constants.INDEX_PATH):
-        print(f"  Warning: Index already exists at {constants.INDEX_PATH}")
-        response = input("  Overwrite? (y/n): ").strip().lower()
-        if response != 'y':
-            print("  Skipping BM25 index creation.")
+        print(f"  ✓ Index already exists at {constants.INDEX_PATH}")
+        try:
+            index = pt.IndexFactory.of(constants.INDEX_PATH)
+            n_docs = index.getCollectionStatistics().getNumberOfDocuments()
+            print(f"  ✓ Index valid — {n_docs} documents")
+            print("  Skipping index creation.")
             return
+        except Exception as e:
+            print(f"  ✗ Index exists but is corrupt: {e}")
+            print("  Will rebuild.")
 
     if constants.DATASET_NAME == "msmarco-passage":
-        # MSMARCO: use ir_datasets corpus iterator (8.8M passages)
+        # MSMARCO: Try PyTerrier's pre-built index first (auto-downloads)
+        print("  Trying PyTerrier pre-built index for msmarco_passage...")
+        try:
+            dataset = pt.get_dataset("msmarco_passage")
+            index_ref = dataset.get_index("terrier_stemmed")
+            print(f"  ✓ Pre-built index obtained: {index_ref}")
+
+            # Verify index works
+            index = pt.IndexFactory.of(index_ref)
+            n_docs = index.getCollectionStatistics().getNumberOfDocuments()
+            print(f"  ✓ Index has {n_docs} documents")
+
+            # Copy/symlink to configured path so experiments find it
+            import shutil
+            # get_index() returns the index directory path itself
+            src_dir = str(index_ref)
+            os.makedirs(INDEX_DIR, exist_ok=True)
+
+            # If pre-built index is at a different location, copy files
+            if os.path.abspath(src_dir) != os.path.abspath(INDEX_DIR):
+                print(f"  Copying pre-built index to {INDEX_DIR}...")
+                for f in os.listdir(src_dir):
+                    src_file = os.path.join(src_dir, f)
+                    dst_file = os.path.join(INDEX_DIR, f)
+                    # Only copy files, skip subdirectories
+                    if os.path.isfile(src_file) and not os.path.exists(dst_file):
+                        shutil.copy2(src_file, dst_file)
+                print(f"  ✓ Index files copied to {INDEX_DIR}")
+            else:
+                print(f"  ✓ Index already at configured path")
+
+            return
+
+        except Exception as e:
+            print(f"  ✗ Pre-built index failed: {e}")
+            print("  Falling back to building index from corpus...")
+
+        # Fallback: build from corpus via IterDictIndexer
         print("  Loading MSMARCO corpus via ir_datasets (this may take a while)...")
         dataset = pt.get_dataset('irds:msmarco-passage')
         os.makedirs(INDEX_DIR, exist_ok=True)
         indexer = pt.IterDictIndexer(
             INDEX_DIR, overwrite=True,
-            meta={'docno': 256, 'text': 4096}
+            meta={'docno': 256, 'text': 4096},
         )
-        index_ref = indexer.index(dataset.get_corpus_iter(), fields=['text'])
+        index_ref = indexer.index(
+            dataset.get_corpus_iter(),
+            fields=('text',),
+            meta=('docno', 'text'),
+        )
     else:
         # Custom datasets: load corpus into DataFrame first
         print("  Loading corpus...")
@@ -81,7 +132,7 @@ def step_build_bm25_index():
         )
         index_ref = indexer.index(docs_df.to_dict(orient='records'))
 
-    print(f"  BM25 index created: {index_ref}")
+    print(f"  ✓ BM25 index created: {index_ref}")
 
 
 def step_generate_rewrites():
@@ -191,10 +242,10 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python experiments/dataset_setup.py                     # all steps
-  python experiments/dataset_setup.py --steps index       # BM25 index only
-  python experiments/dataset_setup.py --steps rewrites    # rewrites only
-  python experiments/dataset_setup.py --skip-dense        # index + rewrites
+  python scripts/dataset_setup.py                     # all steps
+  python scripts/dataset_setup.py --steps index       # BM25 index only
+  python scripts/dataset_setup.py --steps rewrites    # rewrites only
+  python scripts/dataset_setup.py --skip-dense        # index + rewrites
         """
     )
     parser.add_argument(

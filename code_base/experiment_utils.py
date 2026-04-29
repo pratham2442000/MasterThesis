@@ -25,6 +25,21 @@ from scipy.stats import linregress
 import constants
 
 
+def get_text_getter(index_ref=None):
+    """Returns a PyTerrier transformer that adds the 'text' column.
+    
+    For msmarco-passage, the pre-built index does not contain the 'text' 
+    attribute in its metadata. This function automatically fetches the 
+    text directly from the ir_datasets corpus instead. For other datasets, 
+    it falls back to reading from the index metaindex.
+    """
+    import pyterrier as pt
+    if constants.DATASET_NAME == "msmarco-passage":
+        dataset = pt.get_dataset("irds:msmarco-passage")
+        return pt.text.get_text(dataset, "text")
+    else:
+        return pt.text.get_text(index_ref, "text")
+
 # ─────────────────────────────────────────────
 # Plotting
 # ─────────────────────────────────────────────
@@ -303,7 +318,7 @@ def build_retrieval_pipeline(index_ref, reranker, cutoff):
 
     pipeline = (
             bm25_retrieved
-            >> pt.text.get_text(index_ref, "text")
+            >> get_text_getter(index_ref)
             >> reranker
     )
     return bm25_retrieved, pipeline

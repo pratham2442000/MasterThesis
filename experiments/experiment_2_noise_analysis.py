@@ -20,7 +20,7 @@ from pyterrier_t5 import MonoT5ReRanker
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import constants
-from code_base.experiment_utils import save_experiment_results
+from code_base.experiment_utils import get_text_getter, save_experiment_results
 from code_base.transformers import QueryRewriteTransformer
 
 
@@ -148,7 +148,7 @@ def main():
 
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
     mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
-    get_text = pt.text.get_text(index_ref, "text")
+    get_text = get_text_getter(index_ref)
 
     # Load data via experiment_2's runner-compatible path
     from code_base.experiment_runner import ExperimentRunner

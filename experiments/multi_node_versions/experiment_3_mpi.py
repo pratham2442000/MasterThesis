@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 import constants
 from code_base import dataset_factory
 from code_base.experiment_utils import (
+    get_text_getter,
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
@@ -111,7 +112,7 @@ def get_pipelines(
     # Common Components
     rewrite = QueryRewriteTransformer(N_REWRITES, dataset_name=constants.DATASET_NAME)
     bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
-    text_getter = pt.text.get_text(index_ref, "text")
+    text_getter = get_text_getter(index_ref)
     attach_query = AttachOriginalQuery(query_lookup)
 
     # Baselines

@@ -14,6 +14,8 @@ import argparse
 import os
 import sys
 
+from code_base.experiment_utils import get_text_getter
+
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -83,7 +85,7 @@ def build_retrieval_pipeline(index_ref, reranker, cutoff):
 
     pipeline = (
         bm25_retrieved
-        >> pt.text.get_text(index_ref, "text")
+        >> get_text_getter(index_ref)
         >> reranker
     )
     return bm25_retrieved, pipeline
@@ -243,7 +245,7 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
 
     # --- Step 4: Get text ---
     print(f"\n[STEP 4] Fetching document text...")
-    text_pipe = pt.text.get_text(index_ref, "text")
+    text_pipe = get_text_getter(index_ref)
     with_text = text_pipe.transform(bm25_results)
 
     if "text" not in with_text.columns:

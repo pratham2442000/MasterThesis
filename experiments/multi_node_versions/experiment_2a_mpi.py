@@ -18,6 +18,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 import constants
 from code_base import dataset_factory
 from code_base.experiment_utils import (
+    get_text_getter,
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
@@ -134,7 +135,7 @@ def get_pipelines(
     # Common Components
     rewrite = QueryRewriteTransformer(n_rewrites, dataset_name=constants.DATASET_NAME)
     attach_query = AttachOriginalQuery(query_lookup)
-    get_text = pt.text.get_text(index_ref, "text")
+    get_text = get_text_getter(index_ref)
 
     # 1. Dense Baseline
     dense_base = dense_retriever % cutoff

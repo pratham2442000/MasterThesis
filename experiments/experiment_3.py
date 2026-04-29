@@ -15,6 +15,9 @@ from pyterrier_t5 import MonoT5ReRanker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from code_base.experiment_utils import get_text_getter
+
+
 import constants
 from code_base.experiment_runner import ExperimentRunner
 from code_base.transformers import (
@@ -48,7 +51,7 @@ def build_pipelines(cutoff, *, index_ref, reranker, query_lookup):
     )
     bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
     attach = AttachOriginalQuery(query_lookup)
-    get_text = pt.text.get_text(index_ref, "text")
+    get_text = get_text_getter(index_ref)
 
     # Merge-then-Rerank (MTR)
     p_dedup_mtr = (

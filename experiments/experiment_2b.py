@@ -18,6 +18,9 @@ from pyterrier_t5 import MonoT5ReRanker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from code_base.experiment_utils import get_text_getter
+
+
 import constants
 from code_base.experiment_runner import ExperimentRunner
 from code_base.transformers import (
@@ -46,7 +49,7 @@ def build_pipelines(n, *, index_ref, reranker, cutoff):
     """
     rewrite = QueryRewriteTransformer(n, dataset_name=constants.DATASET_NAME)
     bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
-    get_text = pt.text.get_text(index_ref, "text")
+    get_text = get_text_getter(index_ref)
 
     # Shared rerank-per-rewrite prefix
     rewrite_bm25_rerank = rewrite >> bm25 >> get_text >> reranker

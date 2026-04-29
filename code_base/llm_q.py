@@ -400,6 +400,8 @@ def rewrite_single_query(
     filepath = os.path.join(path_dt, filename)
 
     df = pd.read_csv(filepath)
+    df["q_id"] = df["q_id"].astype(str)
+    
     if q_id not in df["q_id"].values:
         raise ValueError(f"q_id {q_id} not found in the dataset.")
 

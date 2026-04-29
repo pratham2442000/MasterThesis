@@ -19,6 +19,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import constants
 from code_base.experiment_runner import ExperimentRunner
+from code_base.experiment_utils import get_text_getter
 
 
 # ─── Pipeline Factory ────────────────────────────────────
@@ -37,7 +38,7 @@ def build_pipelines(c, *, index_ref, reranker):
     bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
     pipeline_t5 = (
             bm25
-            >> pt.text.get_text(index_ref, "text")
+            >> get_text_getter(index_ref)
             >> reranker
     )
     return {
@@ -90,7 +91,7 @@ def main():
     """Run Experiment 1."""
     runner = ExperimentRunner(
         name="experiment_1",
-        results_subdir="exp1",
+        results_subdir=f"exp1/{constants.DATASET_NAME}",
         topic_limit=constants.EXPERIMENT_1_TOPIC_LIMIT,
         eval_metrics=constants.EXPERIMENT_1_EVAL_METRICS,
         extra_metrics_fn=lambda c: [R @ c],

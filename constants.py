@@ -14,7 +14,7 @@ from pyterrier.measures import R, nDCG
 
 # ==================== Dataset Selection ====================
 # Change this ONE value to switch all experiments to a different dataset.
-DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage"
+DATASET_NAME = "msmarco-passage"  # Options: "wiki_musique", "msmarco-passage"
 
 # ==================== Dataset-Specific Configuration ====================
 _DATASET_CONFIGS = {
@@ -60,12 +60,12 @@ RESULTS_PATH = (
 DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 
 # ==================== Experiment 1 Configuration ====================
-EXPERIMENT_1_TOPIC_LIMIT = 500
-EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 200, num=5, dtype=int)]
+EXPERIMENT_1_TOPIC_LIMIT = 43
+EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=int)]
 EXPERIMENT_1_EVAL_METRICS = [R @ 10, nDCG @ 10]
 
 # ==================== Experiment 2 Configuration ====================
-EXPERIMENT_2_TOPIC_LIMIT = 500
+EXPERIMENT_2_TOPIC_LIMIT = 43
 EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 10, dtype=int)]
 EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
 EXPERIMENT_2_EVAL_METRICS = [R @ 10, nDCG @ 10]

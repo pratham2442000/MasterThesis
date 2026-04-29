@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 
 import constants
 from code_base import dataset_factory
-from code_base.experiment_utils import save_experiment_results
+from code_base.experiment_utils import get_text_getter, save_experiment_results
 from code_base.transformers import (
     preprocess_query,
     QueryRewriteTransformer,
@@ -239,7 +239,7 @@ def main():
         # 2. Initialize Models & Index
         index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
         reranker = load_t5_reranker(constants.T5_BATCH_SIZE, rank)
-        get_text = pt.text.get_text(index_ref, "text")
+        get_text = get_text_getter(index_ref)
 
         # Evaluation cutoff (consistent with EXPERIMENT_2_EVAL_METRICS using R@10)
         eval_cutoff = 10

@@ -275,7 +275,7 @@ class ExperimentRunner:
 
         rewritten = pd.read_csv(filepath)
         filtered = topics_df[
-            topics_df["qid"].isin(rewritten["q_id"])
+            topics_df["qid"].astype(str).isin(rewritten["q_id"].astype(str))
         ].reset_index(drop=True)
         return filtered
 

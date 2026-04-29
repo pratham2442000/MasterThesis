@@ -22,6 +22,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants
 from code_base.experiment_runner import ExperimentRunner
 from code_base.wiki_loader_pyt import get_gold_answers
+from code_base.experiment_utils import get_text_getter
 
 # pyterrier-rag imports
 from pyterrier_rag.prompt import Concatenator
@@ -39,7 +40,7 @@ def build_retrieval_pipelines(c, *, index_ref, reranker):
     bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
     pipeline_rerank = (
             bm25
-            >> pt.text.get_text(index_ref, "text")
+            >> get_text_getter(index_ref)
             >> reranker
     )
     return {
@@ -57,7 +58,7 @@ def build_rag_pipelines(c, *, index_ref, reranker, reader):
     bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
     retrieval_pipe = (
             bm25
-            >> pt.text.get_text(index_ref, "text")
+            >> get_text_getter(index_ref)
             >> reranker
     )
     concat = Concatenator(max_elements=constants.EXPERIMENT_5_TOP_K)

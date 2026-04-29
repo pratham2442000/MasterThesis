@@ -15,6 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 import constants
 from code_base import dataset_factory
 from code_base.experiment_utils import (
+    get_text_getter,
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
@@ -139,7 +140,7 @@ def main():
         for c in C_VALUES:
             bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
             bm25_retrieved = bm25 % c
-            pipeline = bm25_retrieved >> pt.text.get_text(index_ref, "text") >> mono_t5_reranker
+            pipeline = bm25_retrieved >> get_text_getter(index_ref) >> mono_t5_reranker
 
             current_metrics = EVAL_METRICS + [R @ c]
 
