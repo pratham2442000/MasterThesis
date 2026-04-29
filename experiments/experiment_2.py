@@ -141,7 +141,7 @@ def main():
 
     runner = ExperimentRunner(
         name="experiment_2",
-        results_subdir="exp2",
+        results_subdir="exp2/{constants.DATASET_NAME}",
         topic_limit=constants.EXPERIMENT_2_TOPIC_LIMIT,
         eval_metrics=constants.EXPERIMENT_2_EVAL_METRICS + [R @ cutoff],
     )
