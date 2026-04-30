@@ -15,13 +15,22 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')
 import constants
 from code_base import dataset_factory
 from code_base.experiment_utils import (
-    build_retrieval_pipeline,
-    build_rag_pipeline,
-    get_reader,
     plot_metrics,
     save_experiment_results,
+    get_text_getter,
 )
 from code_base.wiki_loader_pyt import get_gold_answers
+from pyterrier_rag.prompt import Concatenator
+
+# ─── Custom RAG Prompt ─────────────────────────────────────
+RAG_PROMPT = (
+    "You are given passages and a question. "
+    "Answer the question using ONLY information from the passages below. "
+    "Give a short answer (1-5 words). Do not explain. Do not add extra text.\n\n"
+    "Passages:\n{{ qcontext }}\n\n"
+    "Question: {{ query }}\n"
+    "Answer:"
+)
 
 # -----------------------------------------------------------------------------
 # Configuration & Constants
@@ -85,6 +94,62 @@ def load_t5_reranker(batch_size: int, rank: int):
         return MonoT5ReRanker(verbose=False, batch_size=batch_size)
 
 
+def build_rag_pipelines(c, *, index_ref, reranker, reader):
+    """Full RAG pipeline for a given cutoff *c*."""
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
+    retrieval_pipe = (
+            bm25
+            >> get_text_getter(index_ref)
+            >> reranker
+    )
+    concat = Concatenator(
+        max_elements=constants.EXPERIMENT_5_TOP_K,
+        intermediate_format=lambda text="", **kw: f"- {text}",
+    )
+    rag_pipe = retrieval_pipe >> concat >> reader
+    rag_pipe_without_reranker = bm25 >> get_text_getter(index_ref) >> concat >> reader
+
+    return {
+        "Full_RAG_with_reranker": rag_pipe,
+        "Full_RAG_without_reranker": rag_pipe_without_reranker,
+    }
+
+
+def get_reader(live: bool):
+    """Load HuggingFace RAG reader, respecting offline mode."""
+    if not live:
+        class DummyReader(pt.Transformer):
+            def transform(self, inp):
+                result = inp.copy()
+                result["qanswer"] = "dummy answer"
+                return result
+
+        return DummyReader()
+
+    model_id = constants.RAG_MODEL_NAME
+    if getattr(constants, "OFFLINE_MODE", False):
+        local_path = os.path.join(
+            constants.MODELS_CACHE_DIR, model_id.split("/")[-1]
+        )
+        if os.path.exists(local_path):
+            model_id = local_path
+            logging.info(f"Loading offline model: {model_id}")
+        else:
+            logging.info(f"Loading model {model_id} (offline env set, relying on HF cache)")
+    else:
+        logging.info(f"Loading HuggingFace model: {model_id}")
+
+    from pyterrier_rag import HuggingFaceBackend
+    from pyterrier_rag.readers import Reader
+
+    backend = HuggingFaceBackend(
+        model_id,
+        max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
+        generation_args={"temperature": 0.1, "do_sample": False},
+    )
+    return Reader(backend, prompt=RAG_PROMPT)
+
+
 def process_results(
         all_results_lists: List[List[pd.DataFrame]],
         c_values: List[int],
@@ -120,7 +185,10 @@ def process_results(
 
 def generate_plots(df: pd.DataFrame, output_dir: str):
     """Generate plots for experiment 5 results."""
-    systems = [("Full_RAG", "Full RAG")]
+    systems = [
+        ("Full_RAG_with_reranker", "Full RAG with reranker"),
+        ("Full_RAG_without_reranker", "Full RAG without reranker")
+    ]
 
     # EM plot
     em_cols = [f"{s}_EM" for s, _ in systems if f"{s}_EM" in df.columns]
@@ -133,7 +201,7 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
             title="Experiment 5: RAG Exact Match vs Retrieval Cutoff",
             xlabel="Retrieval Cutoff (c)",
             ylabel="EM",
-            filename="c_vs_EM.png",
+            filename="exp5_cutoff_vs_EM.png",
             output_dir=output_dir,
             use_log_scale=True,
         )
@@ -149,7 +217,7 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
             title="Experiment 5: RAG F1 vs Retrieval Cutoff",
             xlabel="Retrieval Cutoff (c)",
             ylabel="F1",
-            filename="c_vs_F1.png",
+            filename="exp5_cutoff_vs_F1.png",
             output_dir=output_dir,
             use_log_scale=True,
         )
@@ -165,7 +233,7 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
             title="Experiment 5: RAG Generation Quality vs Retrieval Cutoff",
             xlabel="Retrieval Cutoff (c)",
             ylabel="Score",
-            filename="c_vs_EM_F1_combined.png",
+            filename="exp5_cutoff_vs_EM_F1_combined.png",
             output_dir=output_dir,
             use_log_scale=True,
         )
@@ -212,16 +280,15 @@ def main():
             logging.info(f"Starting loop for C_VALUES: {C_VALUES}")
 
         for c in C_VALUES:
-            _, retrieval_pipe = build_retrieval_pipeline(index_ref, reranker, c)
-            rag_pipe = build_rag_pipeline(retrieval_pipe, reader, constants.EXPERIMENT_5_TOP_K)
+            systems_dict = build_rag_pipelines(c, index_ref=index_ref, reranker=reranker, reader=reader)
 
             if len(my_topics) > 0:
                 exp_results = pt.Experiment(
-                    [rag_pipe],
+                    list(systems_dict.values()),
                     my_topics,
                     gold_answers,
                     eval_metrics=constants.EXPERIMENT_5_EVAL_METRICS,
-                    names=["Full_RAG"],
+                    names=list(systems_dict.keys()),
                     verbose=(rank == 0),
                     perquery=True,
                     batch_size=constants.EXPERIMENT_BATCH_SIZE,

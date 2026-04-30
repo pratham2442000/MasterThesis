@@ -28,6 +28,24 @@ from code_base.experiment_utils import get_text_getter
 from pyterrier_rag.prompt import Concatenator
 import pyterrier_rag.measures as rag_measures
 
+# ─── Custom RAG Prompt ─────────────────────────────────────
+# The default pyterrier-rag prompt is too generic for extractive multi-hop QA.
+# This forces the model to answer concisely from the provided passages only.
+RAG_PROMPT = (
+    "You are given passages and a question. "
+    "Answer the question using ONLY information from the passages below. "
+    "Give a short answer (1-5 words). Do not explain. Do not add extra text.\n\n"
+    "Passages:\n{{ qcontext }}\n\n"
+    "Question: {{ query }}\n"
+    "Answer:"
+)
+
+
+def _passage_formatter(record: dict) -> str:
+    """Number each passage so the model can distinguish them."""
+    # record is a dict with keys from in_fields (e.g. 'text')
+    return record.get("text", "")
+
 
 # ─── Pipeline Factories ──────────────────────────────────
 
@@ -61,10 +79,16 @@ def build_rag_pipelines(c, *, index_ref, reranker, reader):
             >> get_text_getter(index_ref)
             >> reranker
     )
-    concat = Concatenator(max_elements=constants.EXPERIMENT_5_TOP_K)
+    concat = Concatenator(
+        max_elements=constants.EXPERIMENT_5_TOP_K,
+        intermediate_format=lambda text="", **kw: f"- {text}",
+    )
     rag_pipe = retrieval_pipe >> concat >> reader
+    rag_pipe_without_reranker = bm25 >> get_text_getter(index_ref) >> concat >> reader
+
     return {
-        "Full_RAG": rag_pipe,
+        "Full_RAG_with_reranker": rag_pipe,
+        "Full_RAG_without_reranker": rag_pipe_without_reranker,
     }
 
 
@@ -97,8 +121,8 @@ RAG_PLOT_CONFIGS = [
     {
         "type": "metrics",
         "x_col": "c",
-        "metric_cols": ["Full_RAG_EM", "Full_RAG_F1"],
-        "labels": ["Exact Match", "F1 Score"],
+        "metric_cols": ["Full_RAG_EM", "Full_RAG_F1", "Full_RAG_without_reranker_EM", "Full_RAG_without_reranker_F1"],
+        "labels": ["EM_Reranker", "F1_Reranker", "EM_without_reranker", "F1_without_reranker"],
         "title": "Effect of Cutoff (c) on RAG Answer Quality",
         "xlabel": "Initial Cutoff (c) for BM25 Retrieval",
         "ylabel": "Score",
@@ -131,9 +155,9 @@ def get_reader():
     backend = HuggingFaceBackend(
         model_id,
         max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
-        generation_args={"temperature": 0.1},
+        generation_args={"temperature": 0.1, "do_sample": False},
     )
-    return Reader(backend)
+    return Reader(backend, prompt=RAG_PROMPT)
 
 
 # ─── Reranker Setup ───────────────────────────────────────
