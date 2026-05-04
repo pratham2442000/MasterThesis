@@ -12,14 +12,13 @@ import sys
 
 import pyterrier as pt
 from pyterrier.measures import R
-from pyterrier_t5 import MonoT5ReRanker
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import constants
 from code_base.experiment_runner import ExperimentRunner
-from code_base.experiment_utils import get_text_getter
+from code_base.experiment_utils import get_text_getter, get_reranker
 
 
 # ─── Pipeline Factory ────────────────────────────────────
@@ -101,7 +100,7 @@ def main():
     topics, qrels, _ = runner.load_data()
 
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-    mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
+    reranker = get_reranker()
 
     results_df = runner.run_sweep(
         sweep_values=constants.EXPERIMENT_1_C_VALUES,
@@ -109,7 +108,7 @@ def main():
         pipeline_factory=build_pipelines,
         topics=topics,
         qrels=qrels,
-        factory_kwargs={"index_ref": index_ref, "reranker": mono_t5},
+        factory_kwargs={"index_ref": index_ref, "reranker": reranker},
     )
 
     runner.save(results_df, results_dir)

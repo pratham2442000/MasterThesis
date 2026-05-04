@@ -15,7 +15,6 @@ import sys
 
 import pyterrier as pt
 from pyterrier.measures import R
-from pyterrier_t5 import MonoT5ReRanker
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -23,7 +22,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants
 from code_base.experiment_runner import ExperimentRunner
 from code_base.wiki_loader_pyt import get_gold_answers
-from code_base.experiment_utils import get_text_getter
+from code_base.experiment_utils import get_text_getter, get_reranker
 
 # pyterrier-rag imports
 from pyterrier_rag.prompt import Concatenator
@@ -217,18 +216,9 @@ def get_reader():
 
 # ─── Reranker Setup ───────────────────────────────────────
 
-def get_reranker():
-    """Load MonoT5 reranker, respecting offline mode."""
-    model_id = constants.RERANKER_MODEL_NAME
-    if getattr(constants, "OFFLINE_MODE", False):
-        local_path = os.path.join(
-            constants.MODELS_CACHE_DIR, model_id.split("/")[-1]
-        )
-        if os.path.exists(local_path):
-            model_id = local_path
-            print(f"Loading offline reranker: {model_id}")
-
-    return MonoT5ReRanker(model=model_id, verbose=False, batch_size=constants.T5_BATCH_SIZE)
+def _get_reranker():
+    """Load reranker via centralized factory."""
+    return get_reranker()
 
 
 # ─── Main ─────────────────────────────────────────────────
@@ -252,7 +242,7 @@ def main():
     topics, qrels, _ = retrieval_runner.load_data()
 
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-    reranker = get_reranker()
+    reranker = _get_reranker()
 
     ret_df = retrieval_runner.run_sweep(
         sweep_values=constants.EXPERIMENT_5_C_VALUES,

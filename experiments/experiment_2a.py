@@ -14,11 +14,10 @@ import numpy as np
 import pyterrier as pt
 import pyterrier_dr as pt_dr
 from pyterrier.measures import R
-from pyterrier_t5 import MonoT5ReRanker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from code_base.experiment_utils import get_text_getter
+from code_base.experiment_utils import get_text_getter, get_reranker
 
 import constants
 from code_base.experiment_runner import ExperimentRunner
@@ -161,7 +160,7 @@ def main():
     dense_retriever = model.query_encoder() >> index.retriever()
 
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-    mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
+    reranker = get_reranker()
 
     topics, qrels, query_lookup = runner.load_data(
         filter_by_rewrites=True, use_tail=True,
@@ -176,7 +175,7 @@ def main():
         factory_kwargs={
             "index_ref": index_ref,
             "dense_retriever": dense_retriever,
-            "mono_t5": mono_t5,
+            "mono_t5": reranker,
             "query_lookup": query_lookup,
             "cutoff": cutoff,
         },

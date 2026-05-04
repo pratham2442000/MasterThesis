@@ -12,12 +12,21 @@ Usage:
     python experiments/test_rag_pipeline.py          # dummy mode
     python experiments/test_rag_pipeline.py --live    # real model
 """
+
+RAG_PROMPT = (
+    "You are given passages and a question. "
+    "Answer the question using ONLY information from the passages below. "
+    "Give a short answer (1-5 words). Do not explain. Do not add extra text.\n\n"
+    "Passages:\n{{ qcontext }}\n\n"
+    "Question: {{ query }}\n"
+    "Answer:"
+)
 import argparse
 import os
 import sys
 from datetime import datetime
 
-from code_base.experiment_utils import get_text_getter
+
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -35,6 +44,7 @@ from pyterrier.measures import R, nDCG
 from code_base.wiki_loader_pyt import get_gold_answers
 from code_base.experiment_runner import ExperimentRunner
 from code_base import dataset_factory
+from code_base.experiment_utils import get_text_getter, get_reranker
 
 # pyterrier-rag imports
 from pyterrier_rag.prompt import Concatenator
@@ -98,7 +108,10 @@ def build_rag_pipeline(retrieval_pipeline, reader, top_k):
     """
     Full RAG: Retrieve + Rerank → Concatenate top-k → Generate answer.
     """
-    concat = Concatenator(max_elements=top_k)
+    concat = Concatenator(
+        max_elements=top_k,
+        intermediate_format=lambda text="", **kw: f"- {text}",
+    )
     rag_pipeline = retrieval_pipeline >> concat >> reader
     return rag_pipeline
 
@@ -127,14 +140,12 @@ def get_reader(live: bool):
     from pyterrier_rag import HuggingFaceBackend
     from pyterrier_rag.readers import Reader
 
-    # Llama models often require device_map="auto" to fit across GPUs
     backend = HuggingFaceBackend(
         model_id,
         max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
-        generation_args={"temperature": 0.1},
+        generation_args={"temperature": 0.1, "do_sample": False},
     )
-    reader = Reader(backend)
-    return reader
+    return Reader(backend, prompt=RAG_PROMPT)
 
 
 # ---------------------------------------------------------
@@ -150,14 +161,19 @@ def retrieval_pipeline_factory(cutoff, *, index_ref, reranker):
     }
 
 def rag_pipeline_factory(cutoff, *, index_ref, reranker, reader):
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
     _, retrieval_pipe = build_retrieval_pipeline(
         index_ref, reranker, cutoff
     )
     rag_pipe = build_rag_pipeline(
-        retrieval_pipe, reader, constants.RAG_CONCATENATOR_TOP_K
+        retrieval_pipe, reader, constants.EXPERIMENT_5_TOP_K
+    )
+    rag_pipe_without_reranker = build_rag_pipeline(
+        bm25 >> get_text_getter(index_ref), reader, constants.EXPERIMENT_5_TOP_K
     )
     return {
-        "Full_RAG": rag_pipe,
+        "Full_RAG_with_reranker": rag_pipe,
+        "Full_RAG_without_reranker": rag_pipe_without_reranker,
     }
 
 
@@ -197,7 +213,7 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
     topics_df["query"] = topics_df["query"].apply(preprocess_query)
 
     # Take first query only
-    single_topic = topics_df.iloc[[3]]
+    single_topic = topics_df.iloc[[4]]
     qid = single_topic.iloc[0]["qid"]
     query = single_topic.iloc[0]["query"]
     answer = single_topic.iloc[0].get("answer", "")
@@ -266,9 +282,9 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
     # --- Step 5: Reranking ---
     print(f"\n[STEP 5] Reranking...")
     if live:
-        from pyterrier_t5 import MonoT5ReRanker
-        reranker = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
-        print("  Using MonoT5ReRanker")
+        from code_base.experiment_utils import get_reranker as _get_reranker
+        reranker = _get_reranker()
+        print(f"  Using {reranker}")
     else:
         reranker = PassthroughReranker()
         print("  Using PassthroughReranker (test mode)")
@@ -279,8 +295,11 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
     print(f"  ✓ Reranking done")
 
     # --- Step 6: Concatenation ---
-    print(f"\n[STEP 6] Context concatenation (top_k={constants.RAG_CONCATENATOR_TOP_K})...")
-    concat = Concatenator(max_elements=constants.RAG_CONCATENATOR_TOP_K)
+    print(f"\n[STEP 6] Context concatenation (top_k={constants.EXPERIMENT_5_TOP_K})...")
+    concat = Concatenator(
+        max_elements=constants.EXPERIMENT_5_TOP_K,
+        intermediate_format=lambda text="", **kw: f"- {text}",
+    )
     concatenated = concat.transform(reranked)
 
     print(f"  Output rows: {len(concatenated)}")
@@ -402,15 +421,7 @@ def main():
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
 
     if args.live:
-        model_id = constants.RERANKER_MODEL_NAME
-        if getattr(constants, "OFFLINE_MODE", False):
-            local_path = os.path.join(constants.MODELS_CACHE_DIR, model_id.split('/')[-1])
-            if os.path.exists(local_path):
-                model_id = local_path
-
-        from pyterrier_t5 import MonoT5ReRanker
-        reranker = MonoT5ReRanker(model=model_id, verbose=False, batch_size=constants.T5_BATCH_SIZE)
-        print(f"Using MonoT5ReRanker with {model_id}")
+        reranker = get_reranker()
     else:
         reranker = PassthroughReranker()
         print("Using PassthroughReranker (test mode)")
@@ -489,7 +500,7 @@ def main():
         gold_answers["gold_answer"],
     ))
 
-    for cutoff_val in constants.EXPERIMENT_1_C_VALUES:
+    for cutoff_val in constants.EXPERIMENT_5_C_VALUES:
         pipelines = rag_pipeline_factory(
             cutoff_val, index_ref=index_ref, reranker=reranker, reader=reader
         )

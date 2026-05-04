@@ -40,6 +40,56 @@ def get_text_getter(index_ref=None):
     else:
         return pt.text.get_text(index_ref, "text")
 
+
+def get_reranker():
+    """Returns a reranker based on ``constants.RERANKER_TYPE``.
+
+    Supports ``"monot5"`` (MonoT5ReRanker) and ``"cross_encoder"``
+    (CrossEncoderReRanker). Respects offline mode for MonoT5.
+
+    Returns:
+        A PyTerrier Transformer that reranks documents.
+    """
+    rtype = getattr(constants, "RERANKER_TYPE", "monot5")
+
+    if rtype == "cross_encoder":
+        from code_base.cross_encoder_reranker import CrossEncoderReRanker
+
+        model_id = constants.CROSS_ENCODER_MODEL_NAME
+        if getattr(constants, "OFFLINE_MODE", False):
+            local_path = os.path.join(
+                constants.MODELS_CACHE_DIR, model_id.split("/")[-1]
+            )
+            if os.path.exists(local_path):
+                model_id = local_path
+                print(f"Loading offline CrossEncoder: {model_id}")
+
+        print(f"Using CrossEncoderReRanker ({model_id})")
+        return CrossEncoderReRanker(
+            model=model_id,
+            batch_size=constants.CROSS_ENCODER_BATCH_SIZE,
+            verbose=False,
+        )
+
+    else:  # monot5
+        from pyterrier_t5 import MonoT5ReRanker
+
+        model_id = constants.RERANKER_MODEL_NAME
+        if getattr(constants, "OFFLINE_MODE", False):
+            local_path = os.path.join(
+                constants.MODELS_CACHE_DIR, model_id.split("/")[-1]
+            )
+            if os.path.exists(local_path):
+                model_id = local_path
+                print(f"Loading offline MonoT5: {model_id}")
+
+        print(f"Using MonoT5ReRanker ({model_id})")
+        return MonoT5ReRanker(
+            model=model_id,
+            verbose=False,
+            batch_size=constants.T5_BATCH_SIZE,
+        )
+
 # ─────────────────────────────────────────────
 # Plotting
 # ─────────────────────────────────────────────
@@ -416,6 +466,12 @@ def collect_experiment_metadata(
         "data_split": constants.DATA_SPLIT,
         "dataset_name": constants.DATASET_NAME,
         "index_path": constants.INDEX_PATH,
+        "reranker_type": constants.RERANKER_TYPE,
+        "reranker_model_name": (
+            constants.CROSS_ENCODER_MODEL_NAME
+            if constants.RERANKER_TYPE == "cross_encoder"
+            else constants.RERANKER_MODEL_NAME
+        ),
     }
 
     if experiment_name == "experiment_1":

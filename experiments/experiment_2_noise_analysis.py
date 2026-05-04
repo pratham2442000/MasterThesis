@@ -17,12 +17,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pyterrier as pt
 from pyterrier.measures import R
-from pyterrier_t5 import MonoT5ReRanker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import constants
-from code_base.experiment_utils import get_text_getter, save_experiment_results
+from code_base.experiment_utils import get_text_getter, save_experiment_results, get_reranker
 from code_base.transformers import QueryRewriteTransformer
 
 
@@ -169,7 +168,7 @@ def main():
     os.makedirs(results_path, exist_ok=True)
 
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-    mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
+    reranker = get_reranker()
     get_text = get_text_getter(index_ref)
 
     # Load data via ExperimentRunner
@@ -214,7 +213,7 @@ def main():
                 pt.terrier.Retriever(index_ref, wmodel="BM25")
                 % cutoff
         )
-        oracle_pipeline = rewriter >> bm25 >> get_text >> mono_t5
+        oracle_pipeline = rewriter >> bm25 >> get_text >> reranker
         oracle_res = oracle_pipeline.transform(topics)
 
         row = {"n": n}

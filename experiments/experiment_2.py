@@ -13,7 +13,6 @@ import sys
 import numpy as np
 import pyterrier as pt
 from pyterrier.measures import R
-from pyterrier_t5 import MonoT5ReRanker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -27,7 +26,7 @@ from code_base.transformers import (
     MergeRewrites,
     QueryRewriteTransformer,
 )
-from code_base.experiment_utils import get_text_getter
+from code_base.experiment_utils import get_text_getter, get_reranker
 
 
 # ─── Pipeline Factory ────────────────────────────────────
@@ -105,7 +104,7 @@ PLOT_CONFIGS = [
         "labels": [lbl for _, lbl in SYSTEMS],
         "title": "Experiment 2: Fusion Methods Comparison (R@50)",
         "xlabel": "Number of Rewrites",
-        "filename": "n_rewrites_vs_R_comparison.png",
+        "filename": "n_rewrites_vs_R_at_50_comparison.png",
         "use_log_scale": False,
     },
     {
@@ -115,7 +114,7 @@ PLOT_CONFIGS = [
         "labels": [lbl for _, lbl in SYSTEMS],
         "title": "Experiment 2: Fusion Methods Comparison (R@10)",
         "xlabel": "Number of Rewrites",
-        "filename": "n_rewrites_vs_R_comparison.png",
+        "filename": "n_rewrites_vs_R_at_10_comparison.png",
         "use_log_scale": False,
     },
     {
@@ -161,7 +160,7 @@ def main():
     )
 
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-    mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
+    reranker = get_reranker()
 
     results_df = runner.run_sweep(
         sweep_values=constants.EXPERIMENT_2_N_REWRITES,
@@ -171,7 +170,7 @@ def main():
         qrels=qrels,
         factory_kwargs={
             "index_ref": index_ref,
-            "reranker": mono_t5,
+            "reranker": reranker,
             "query_lookup": query_lookup,
             "cutoff": cutoff,
         },

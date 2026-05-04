@@ -11,11 +11,10 @@ import sys
 
 import pyterrier as pt
 from pyterrier.measures import R
-from pyterrier_t5 import MonoT5ReRanker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from code_base.experiment_utils import get_text_getter
+from code_base.experiment_utils import get_text_getter, get_reranker
 
 
 import constants
@@ -153,7 +152,7 @@ def main():
     )
 
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-    mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
+    reranker = get_reranker()
 
     results_df = runner.run_sweep(
         sweep_values=constants.EXPERIMENT_3_C_VALUES,
@@ -163,7 +162,7 @@ def main():
         qrels=qrels,
         factory_kwargs={
             "index_ref": index_ref,
-            "reranker": mono_t5,
+            "reranker": reranker,
             "query_lookup": query_lookup,
         },
     )
