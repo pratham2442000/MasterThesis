@@ -31,6 +31,7 @@ Usage
 """
 
 import os
+from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -78,11 +79,20 @@ class ExperimentRunner:
     def setup(self) -> str:
         """Create results directory and return its path.
 
+        Path structure: ``RESULTS_PATH / DATASET_NAME / results_subdir / run_YYYYMMDD_HHMMSS``
+
+        Each run gets unique timestamped directory.
+        Results are grouped by dataset automatically.
+
         Returns:
             Absolute path to the results directory.
         """
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         results_path = os.path.join(
-            constants.RESULTS_PATH, self.results_subdir
+            constants.RESULTS_PATH,
+            constants.DATASET_NAME,
+            self.results_subdir,
+            f"run_{timestamp}",
         )
         os.makedirs(results_path, exist_ok=True)
         print(f"Results directory ensured at: {results_path}")

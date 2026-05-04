@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import traceback
+from datetime import datetime
 from typing import List, Dict, Any
 
 import numpy as np
@@ -333,8 +334,12 @@ def main():
         # 1. Environment & Data Setup
         setup_environment(rank)
 
-        RESULTS_PATH = os.path.join(constants.RESULTS_PATH, "exp2")
-        if rank == 0 and not os.path.exists(RESULTS_PATH):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") if rank == 0 else None
+        timestamp = comm.bcast(timestamp, root=0)
+        RESULTS_PATH = os.path.join(
+            constants.RESULTS_PATH, constants.DATASET_NAME, "exp2", f"run_{timestamp}"
+        )
+        if rank == 0:
             os.makedirs(RESULTS_PATH, exist_ok=True)
             logging.info(f"Created results dir: {RESULTS_PATH}")
 

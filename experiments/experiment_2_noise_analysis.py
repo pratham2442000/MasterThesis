@@ -1,20 +1,22 @@
 """
 Experiment 2 — Noise Analysis (Oracle Recall)
 ===============================================
-Computes the "Oracle" Recall@10 for each N: the best single rewrite's
-recall per query. Compares this upper bound against measured fusion
-method results from Experiment 2.
+Computes the "Oracle" recall for each N: the best single rewrite's
+recall per query. Loads pre-computed Experiment 2 results and overlays
+fusion method metrics for comparison.
 
 Helps quantify how much recall the fusion methods lose to noise
 introduced by poor rewrites.
 """
 
+import glob
 import os
 import sys
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import pyterrier as pt
+from pyterrier.measures import R
 from pyterrier_t5 import MonoT5ReRanker
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -73,24 +75,24 @@ def calculate_oracle_recall(
     return pd.DataFrame(rows)
 
 
-def load_comparison_results(results_path: str) -> pd.DataFrame:
-    """Try to load Experiment 2 results CSV for overlay plotting.
+def find_latest_exp2_results() -> pd.DataFrame:
+    """Find and load the latest Experiment 2 results CSV.
 
-    Args:
-        results_path: Base results directory.
+    Searches: RESULTS_PATH / DATASET_NAME / exp2 / run_* /
 
     Returns:
         DataFrame of experiment_2 results, or empty DataFrame.
     """
-    candidates = [
-        os.path.join(results_path, "experiment_2_results.csv"),
-        os.path.join(results_path, "exp2", "experiment_2_results.csv"),
-        os.path.join(constants.DATA_PATH, "experiment_2_results.csv"),
-    ]
-    for path in candidates:
-        if os.path.exists(path):
-            print(f"Loaded experiment_2 results from {path}")
-            return pd.read_csv(path)
+    exp2_base = os.path.join(
+        constants.RESULTS_PATH, constants.DATASET_NAME, "exp2"
+    )
+    pattern = os.path.join(exp2_base, "run_*", "experiment_2_results.csv")
+    candidates = sorted(glob.glob(pattern), reverse=True)
+
+    if candidates:
+        path = candidates[0]  # latest by timestamp
+        print(f"Loaded experiment_2 results from {path}")
+        return pd.read_csv(path)
 
     print("Warning: experiment_2 results CSV not found.")
     return pd.DataFrame()
@@ -103,72 +105,104 @@ def plot_comparison(df: pd.DataFrame, output_dir: str) -> None:
         df: Analysis results DataFrame.
         output_dir: Directory to save the plot.
     """
-    fig, ax = plt.subplots(figsize=(10, 6))
 
-    oracle_col = next((c for c in df.columns if "Oracle_" in c), None)
-    sys_cols = [c for c in df.columns if "_R@" in c and "Oracle" not in c]
+    oracle_cols = [c for c in df.columns if "Oracle_" in c]
 
-    if oracle_col:
+    for oracle_col in oracle_cols:
+        # Extract cutoff from oracle col (e.g. "Oracle_R@50" -> "R@50")
+        recall_suffix = oracle_col.split("_", 1)[1]  # e.g. "R@50"
+
+        # Only plot sys cols with same recall cutoff
+        matching_sys_cols = [
+            c for c in df.columns
+            if c.endswith(f"_{recall_suffix}") and "Oracle" not in c
+        ]
+
+        fig, ax = plt.subplots(figsize=(10, 6))
         ax.plot(
             df["n"], df[oracle_col],
-            label="Oracle (Max Recall)",
+            label=f"Oracle ({recall_suffix})",
             marker="*", linestyle="--", linewidth=2,
             color="black", markersize=8,
         )
 
-    markers = ["o", "s", "^", "D", "v", "p"]
-    for i, col in enumerate(sys_cols):
-        label = col.split("_R@")[0].replace("Pipeline_", "")
-        ax.plot(
-            df["n"], df[col],
-            label=label, marker=markers[i % len(markers)], alpha=0.7,
-        )
+        markers = ["o", "s", "^", "D", "v", "p"]
+        for i, col in enumerate(matching_sys_cols):
+            label = col.rsplit(f"_{recall_suffix}", 1)[0].replace("Pipeline_", "")
+            ax.plot(
+                df["n"], df[col],
+                label=label, marker=markers[i % len(markers)], alpha=0.7,
+            )
 
-    ax.set_title("Fusion Noise Analysis: Oracle vs Fusion Methods")
-    ax.set_xlabel("Number of Rewrites (N)")
-    ax.set_ylabel("Recall")
-    ax.legend()
-    ax.grid(True, linestyle="--", alpha=0.6)
-    fig.tight_layout()
+        ax.set_title(f"Fusion Noise Analysis: Oracle vs Fusion Methods ({oracle_col.split('_', 1)[1]})")
+        ax.set_xlabel("Number of Rewrites (N)")
+        ax.set_ylabel(f"{oracle_col.split('_', 1)[1]}")
+        ax.legend()
+        ax.grid(True, linestyle="--", alpha=0.6)
+        fig.tight_layout()
 
-    filepath = os.path.join(output_dir, "noise_analysis_plot.png")
-    fig.savefig(filepath, dpi=150, bbox_inches="tight")
-    print(f"Plot saved to {filepath}")
-    plt.close(fig)
+        filepath = os.path.join(output_dir, f"noise_analysis_plot_{oracle_col.split('_', 1)[1]}.png")
+        fig.savefig(filepath, dpi=150, bbox_inches="tight")
+        print(f"Plot saved to {filepath}")
+        plt.close(fig)
 
 
 # ─── Main ─────────────────────────────────────────────────
 
 def main():
     """Run the noise (oracle recall) analysis."""
-    # Reuse experiment_2 setup helpers
+    from datetime import datetime
+    from code_base.experiment_runner import ExperimentRunner
 
-    results_path = os.path.join(constants.RESULTS_PATH, "exp2")
+    # Use same metrics as experiment_2
+    cutoff = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
+    eval_metrics = constants.EXPERIMENT_2_EVAL_METRICS + [R @ cutoff]
+
+    # Build timestamped output dir matching ExperimentRunner pattern
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_path = os.path.join(
+        constants.RESULTS_PATH,
+        constants.DATASET_NAME,
+        "exp2_noise",
+        f"run_{timestamp}",
+    )
     os.makedirs(results_path, exist_ok=True)
 
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
     mono_t5 = MonoT5ReRanker(verbose=False, batch_size=constants.T5_BATCH_SIZE)
     get_text = get_text_getter(index_ref)
 
-    # Load data via experiment_2's runner-compatible path
-    from code_base.experiment_runner import ExperimentRunner
-
+    # Load data via ExperimentRunner
     runner = ExperimentRunner(
         name="experiment_2_noise",
-        results_subdir="exp2",
+        results_subdir="exp2_noise",
         topic_limit=constants.EXPERIMENT_2_TOPIC_LIMIT,
-        eval_metrics=constants.EXPERIMENT_2_EVAL_METRICS,
+        eval_metrics=eval_metrics,
     )
     topics, qrels, _ = runner.load_data(
         filter_by_rewrites=True, use_tail=True,
     )
 
-    exp2_df = load_comparison_results(results_path)
+    # Load pre-computed experiment_2 results (no recalculation)
+    exp2_df = find_latest_exp2_results()
+
+    # Determine recall cutoffs to compute oracle for
+    # Match all R@X metrics from experiment_2
+    recall_cutoffs = []
+    for m in eval_metrics:
+        m_str = str(m)
+        if m_str.startswith("R@"):
+            val = int(m_str.split("@")[1])
+            if val not in recall_cutoffs:
+                recall_cutoffs.append(val)
+
+    if not recall_cutoffs:
+        recall_cutoffs = [50]  # fallback
 
     all_results = []
-    eval_cutoff = 10
 
     print(f"Starting Noise Analysis for N={constants.EXPERIMENT_2_N_REWRITES}")
+    print(f"Oracle recall cutoffs: {recall_cutoffs}")
 
     for n in constants.EXPERIMENT_2_N_REWRITES:
         print(f"\nProcessing N={n}...")
@@ -178,35 +212,33 @@ def main():
         )
         bm25 = (
                 pt.terrier.Retriever(index_ref, wmodel="BM25")
-                % constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
+                % cutoff
         )
         oracle_pipeline = rewriter >> bm25 >> get_text >> mono_t5
         oracle_res = oracle_pipeline.transform(topics)
 
-        oracle_metrics = calculate_oracle_recall(
-            oracle_res, qrels, cutoff=eval_cutoff
-        )
-        mean_oracle = oracle_metrics["oracle_recall"].mean()
-        print(f"  Oracle R@{eval_cutoff}: {mean_oracle:.4f}")
+        row = {"n": n}
 
-        row = {"n": n, f"Oracle_R@{eval_cutoff}": mean_oracle}
-
-        # Overlay experiment_2 results if available
-        if not exp2_df.empty:
-            n_col = next(
-                (c for c in exp2_df.columns if c.lower() in ("n",)),
-                None,
+        # Compute oracle recall for each cutoff
+        for rc in recall_cutoffs:
+            oracle_metrics = calculate_oracle_recall(
+                oracle_res, qrels, cutoff=rc
             )
-            if n_col:
-                match = exp2_df[exp2_df[n_col] == n]
-                if not match.empty:
-                    r_cols = [
-                        c for c in exp2_df.columns
-                        if f"R@{eval_cutoff}" in c
-                    ]
-                    agg = match[r_cols].mean(numeric_only=True)
-                    for col in r_cols:
-                        row[col] = float(agg[col])
+            mean_oracle = oracle_metrics["oracle_recall"].mean()
+            row[f"Oracle_R@{rc}"] = mean_oracle
+            print(f"  Oracle R@{rc}: {mean_oracle:.4f}")
+
+        # Overlay experiment_2 recall columns if available
+        if not exp2_df.empty:
+            match = exp2_df[exp2_df["n"] == n]
+            if not match.empty:
+                r_cols = [
+                    c for c in exp2_df.columns
+                    if "_R@" in c or "_nDCG@" in c
+                ]
+                agg = match[r_cols].mean(numeric_only=True)
+                for col in r_cols:
+                    row[col] = float(agg[col])
 
         all_results.append(row)
 

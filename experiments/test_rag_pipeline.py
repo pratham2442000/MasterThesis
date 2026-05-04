@@ -6,6 +6,8 @@ Uses pyterrier-rag for the generation stage and evaluation metrics.
 By default, runs in DUMMY mode (no model loading, no API calls).
 Pass --live to use the real HuggingFace backend with the configured model.
 
+Saves per-query traces (context, LLM output, gold answer) for inspection.
+
 Usage:
     python experiments/test_rag_pipeline.py          # dummy mode
     python experiments/test_rag_pipeline.py --live    # real model
@@ -13,6 +15,7 @@ Usage:
 import argparse
 import os
 import sys
+from datetime import datetime
 
 from code_base.experiment_utils import get_text_getter
 
@@ -314,6 +317,27 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
     else:
         print("  No generated answer to compare")
 
+    # --- Step 9: Save trace ---
+    print(f"\n[STEP 9] Saving per-query trace...")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    traces_dir = os.path.join(
+        constants.RESULTS_PATH, constants.DATASET_NAME,
+        "test_rag_pipeline", f"run_{timestamp}", "traces"
+    )
+    os.makedirs(traces_dir, exist_ok=True)
+
+    trace_data = {
+        "qid": [qid],
+        "query": [query],
+        "qcontext": [str(concatenated.iloc[0].get("qcontext", "")) if "qcontext" in concatenated.columns else ""],
+        "qanswer": [str(generated.iloc[0].get("qanswer", "")) if "qanswer" in generated.columns else ""],
+        "gold_answer": [answer],
+    }
+    trace_df = pd.DataFrame(trace_data)
+    trace_path = os.path.join(traces_dir, "single_query_trace.csv")
+    trace_df.to_csv(trace_path, index=False)
+    print(f"  Trace saved: {trace_path}")
+
     print("\n" + "=" * 60)
     print("DIAGNOSTIC COMPLETE")
     print("=" * 60)
@@ -447,6 +471,48 @@ def main():
         print(rag_df)
     except Exception as e:
         print(f"\nRAG Evaluation failed: {e}")
+
+    # ---- 5. Save Per-Query Traces ----
+    print("\n" + "=" * 60)
+    print("SAVING PER-QUERY TRACES")
+    print("=" * 60)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    traces_dir = os.path.join(
+        constants.RESULTS_PATH, constants.DATASET_NAME,
+        "test_rag_pipeline", f"run_{timestamp}", "traces"
+    )
+    os.makedirs(traces_dir, exist_ok=True)
+
+    ga_map = dict(zip(
+        gold_answers["qid"].astype(str),
+        gold_answers["gold_answer"],
+    ))
+
+    for cutoff_val in constants.EXPERIMENT_1_C_VALUES:
+        pipelines = rag_pipeline_factory(
+            cutoff_val, index_ref=index_ref, reranker=reranker, reader=reader
+        )
+        for sys_name, pipeline in pipelines.items():
+            print(f"  Tracing {sys_name} (cutoff={cutoff_val})...")
+            try:
+                raw_output = pipeline.transform(topics)
+                trace_rows = []
+                for _, row in raw_output.iterrows():
+                    qid = str(row.get("qid", ""))
+                    trace_rows.append({
+                        "qid": qid,
+                        "query": row.get("query", ""),
+                        "qcontext": row.get("qcontext", ""),
+                        "qanswer": row.get("qanswer", ""),
+                        "gold_answer": ga_map.get(qid, ""),
+                    })
+                trace_df = pd.DataFrame(trace_rows)
+                fname = f"trace_{sys_name}_cutoff_{cutoff_val}.csv"
+                trace_df.to_csv(os.path.join(traces_dir, fname), index=False)
+                print(f"  Saved: {fname} ({len(trace_df)} rows)")
+            except Exception as e:
+                print(f"  !! Trace failed for {sys_name}: {e}")
 
     print("\n" + "=" * 60)
     print("TEST COMPLETE")

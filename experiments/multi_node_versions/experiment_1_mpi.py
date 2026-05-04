@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -61,14 +62,15 @@ def main():
         # Configuration
         # -----------------------------
         DATA_PATH = constants.DATA_PATH
-        RESULTS_PATH = os.path.join(constants.RESULTS_PATH, "exp1")
-        
-        if rank == 0:     
-            if not os.path.exists(RESULTS_PATH):
-                os.makedirs(RESULTS_PATH, exist_ok=True)
-                logging.info(f"Created results directory at {RESULTS_PATH}.")
-            else:
-                 logging.info(f"Results directory {RESULTS_PATH} already exists.")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S") if rank == 0 else None
+        timestamp = comm.bcast(timestamp, root=0)
+        RESULTS_PATH = os.path.join(
+            constants.RESULTS_PATH, constants.DATASET_NAME, "exp1", f"run_{timestamp}"
+        )
+
+        if rank == 0:
+            os.makedirs(RESULTS_PATH, exist_ok=True)
+            logging.info(f"Created results directory at {RESULTS_PATH}.")
 
         DATA_SPLIT = constants.DATA_SPLIT
         INDEX_PATH = constants.INDEX_PATH

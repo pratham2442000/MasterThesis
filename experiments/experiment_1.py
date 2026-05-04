@@ -91,7 +91,7 @@ def main():
     """Run Experiment 1."""
     runner = ExperimentRunner(
         name="experiment_1",
-        results_subdir=f"exp1/{constants.DATASET_NAME}",
+        results_subdir="exp1",
         topic_limit=constants.EXPERIMENT_1_TOPIC_LIMIT,
         eval_metrics=constants.EXPERIMENT_1_EVAL_METRICS,
         extra_metrics_fn=lambda c: [R @ c],
