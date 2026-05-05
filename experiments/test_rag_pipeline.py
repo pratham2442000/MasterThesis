@@ -41,7 +41,7 @@ import pandas as pd
 import pyterrier as pt
 from pyterrier.measures import R, nDCG
 
-from code_base.wiki_loader_pyt import get_gold_answers
+from code_base.dataset_factory import get_gold_answers
 from code_base.experiment_runner import ExperimentRunner
 from code_base import dataset_factory
 from code_base.experiment_utils import get_text_getter, get_reranker

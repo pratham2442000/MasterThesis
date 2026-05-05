@@ -37,6 +37,9 @@ def get_text_getter(index_ref=None):
     if constants.DATASET_NAME == "msmarco-passage":
         dataset = pt.get_dataset("irds:msmarco-passage")
         return pt.text.get_text(dataset, "text")
+    elif constants.DATASET_NAME == "dpr-w100":
+        dataset = pt.get_dataset("irds:dpr-w100")
+        return pt.text.get_text(dataset, "text")
     else:
         return pt.text.get_text(index_ref, "text")
 

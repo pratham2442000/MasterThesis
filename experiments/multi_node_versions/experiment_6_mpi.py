@@ -32,7 +32,7 @@ from code_base.experiment_utils import (
     plot_with_regression,
     save_experiment_results,
 )
-from code_base.wiki_loader_pyt import get_gold_answers
+from code_base.dataset_factory import get_gold_answers
 from code_base.transformers import (
     preprocess_query,
     QueryRewriteTransformer,

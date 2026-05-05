@@ -20,7 +20,7 @@ from code_base.experiment_utils import (
     save_experiment_results,
     get_text_getter,
 )
-from code_base.wiki_loader_pyt import get_gold_answers
+from code_base.dataset_factory import get_gold_answers
 from pyterrier_rag.prompt import Concatenator
 
 # ─── Custom RAG Prompt ─────────────────────────────────────

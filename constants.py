@@ -14,14 +14,14 @@ from pyterrier.measures import R, nDCG
 
 # ==================== Dataset Selection ====================
 # Change this ONE value to switch all experiments to a different dataset.
-DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage"
+DATASET_NAME = "msmarco-passage"  # Options: "wiki_musique", "msmarco-passage"
 
 # ==================== Dataset-Specific Configuration ====================
 _DATASET_CONFIGS = {
     "wiki_musique": {
         "DATA_PATH": (
-             "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
-#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
+            #  "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
+            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
         ),
         "DATA_SPLIT": "dev",
         "INDEX_PATH": "./index/wiki_musique_index/data.properties",
@@ -35,13 +35,23 @@ _DATASET_CONFIGS = {
     },
     "msmarco-passage": {
         "DATA_PATH": (
-             "/scratch/pjohari/MasterThesis/data/msmarco-passage"
-#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
+            #  "/scratch/pjohari/MasterThesis/data/msmarco-passage"
+            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
         ),
         "DATA_SPLIT": "19",  # -> irds:msmarco-passage/trec-dl-2019/judged
         "INDEX_PATH": "./index/msmarco_passage_index/data.properties",
         "DENSE_INDEX_PATH": "./index/msmarco_passage_dense_index",
         "TYPE_DISTRIBUTION": None,  # MSMARCO has no query types
+    },
+    "dpr-w100": {
+        "DATA_PATH": (
+            #  "/scratch/pjohari/MasterThesis/data/dpr-w100"
+            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100"
+        ),
+        "DATA_SPLIT": "dev",  # -> irds:dpr-w100/trivia-qa/dev
+        "INDEX_PATH": "./index/dpr_w100_index/data.properties",
+        "DENSE_INDEX_PATH": "./index/dpr_w100_dense_index",
+        "TYPE_DISTRIBUTION": None,  # TriviaQA has no query types
     },
 }
 
@@ -53,8 +63,8 @@ DENSE_INDEX_PATH = _DATASET_CONFIGS[DATASET_NAME]["DENSE_INDEX_PATH"]
 EXPERIMENT_2_TYPE_DISTRIBUTION = _DATASET_CONFIGS[DATASET_NAME]["TYPE_DISTRIBUTION"]
 
 RESULTS_PATH = (
-     "/scratch/pjohari/MasterThesis/results/"
-#    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
+    #  "/scratch/pjohari/MasterThesis/results/"
+    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
 )
 
 DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
@@ -67,8 +77,8 @@ EXPERIMENT_1_EVAL_METRICS = [R @ 10, nDCG @ 10]
 # ==================== Experiment 2 Configuration ====================
 EXPERIMENT_2_TOPIC_LIMIT = 500
 EXPERIMENT_2_N_REWRITES = [int(i) for i in np.linspace(1, 30, 10, dtype=int)]
-EXPERIMENT_2_RETRIEVAL_CUTOFF = 20
-EXPERIMENT_2_EVAL_METRICS = [R @ 10, nDCG @ 10]
+EXPERIMENT_2_RETRIEVAL_CUTOFF = 50
+EXPERIMENT_2_EVAL_METRICS = [R @ 50, R @ 10, nDCG @ 10]
 
 # ==================== Experiment 2c Configuration ====================
 EXPERIMENT_2C_REWRITING_COUNT = 15
@@ -107,6 +117,11 @@ EXPERIMENT_6_EVAL_METRICS = [rag_measures.EM, rag_measures.F1]
 EXPERIMENT_6_TOP_K = 5  # Passages fed to generator
 
 # ==================== Reranker Configuration ====================
+# Options: "monot5", "cross_encoder"
+RERANKER_TYPE = "cross_encoder"
+RERANKER_MODEL_NAME = "castorini/monot5-base-msmarco"
+CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L6-v2"
+CROSS_ENCODER_BATCH_SIZE = 64
 T5_BATCH_SIZE = 16
 EXPERIMENT_BATCH_SIZE = 10
 
@@ -122,8 +137,12 @@ REQUIRE_API_PERMISSION = True
 OFFLINE_MODE = True
 MODELS_CACHE_DIR = "./models"  # Path to local offline models
 RAG_MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
-RERANKER_MODEL_NAME = "castorini/monot5-base-msmarco"
 # DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 
 RAG_MODEL_MAX_NEW_TOKENS = 512
 RAG_CONCATENATOR_TOP_K = 5
+
+# TODO use mini-lm 0.6 reranker (info in sunar paper) / qwen 0.6 (repo: https://github.com/Mandeep-Rathee/gar_repro)
+# TODO LLM as judge
+# TODO ORE index making using built scipts for wiki
+# TODO have documents as the x axis not the number of queries (i.e find the average number of documents considered after merge(i.e before reranker) for each query rewrite)

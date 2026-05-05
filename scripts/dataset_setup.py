@@ -110,6 +110,23 @@ def step_build_bm25_index():
             fields=('text',),
             meta=('docno', 'text'),
         )
+
+    elif constants.DATASET_NAME == "dpr-w100":
+        # DPR-W100: ~21M Wikipedia passages, build from ir_datasets
+        print("  Loading DPR-W100 corpus via ir_datasets (~21M passages)...")
+        print("  This will take a while. Text metadata is stored for RAG.")
+        dataset = pt.get_dataset('irds:dpr-w100')
+        os.makedirs(INDEX_DIR, exist_ok=True)
+        indexer = pt.IterDictIndexer(
+            INDEX_DIR, overwrite=True,
+            meta={'docno': 256, 'text': 4096},
+            blocks=True,
+        )
+        index_ref = indexer.index(
+            dataset.get_corpus_iter(),
+            fields=('text',),
+            meta=('docno', 'text'),
+        )
     else:
         # Custom datasets: load corpus into DataFrame first
         print("  Loading corpus...")
@@ -216,6 +233,13 @@ def step_build_dense_index():
     if constants.DATASET_NAME == "msmarco-passage":
         print("  Loading MSMARCO corpus via ir_datasets...")
         dataset = pt.get_dataset('irds:msmarco-passage')
+        model = pt_dr.TctColBert(model_name, verbose=True)
+        index = pt_dr.FlexIndex(index_path)
+        pipeline = model.doc_encoder() >> index.indexer(mode="overwrite")
+        pipeline.index(dataset.get_corpus_iter())
+    elif constants.DATASET_NAME == "dpr-w100":
+        print("  Loading DPR-W100 corpus via ir_datasets (~21M passages)...")
+        dataset = pt.get_dataset('irds:dpr-w100')
         model = pt_dr.TctColBert(model_name, verbose=True)
         index = pt_dr.FlexIndex(index_path)
         pipeline = model.doc_encoder() >> index.indexer(mode="overwrite")
