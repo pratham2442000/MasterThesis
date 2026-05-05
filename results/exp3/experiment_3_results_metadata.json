@@ -1,8 +1,0 @@
-{
-  "experiment_name": "experiment_3",
-  "timestamp": "2026-02-20T15:20:33.442426",
-  "data_path": "/scratch/pjohari/MasterThesis/data/2wikimultihopQA",
-  "data_split": "test",
-  "dataset_name": "wiki_musique",
-  "index_path": "./index/wiki_musique_index/data.properties"
-}
