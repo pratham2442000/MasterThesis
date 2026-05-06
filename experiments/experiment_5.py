@@ -22,21 +22,13 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants
 from code_base.experiment_runner import ExperimentRunner
 from code_base.dataset_factory import get_gold_answers
-from code_base.experiment_utils import get_text_getter, get_reranker
+from code_base.experiment_utils import get_text_getter, get_reranker, get_reader
 
 # pyterrier-rag imports
 from pyterrier_rag.prompt import Concatenator
 import pyterrier_rag.measures as rag_measures
 
 
-RAG_PROMPT = (
-    "You are given passages and a question. "
-    "Answer the question using ONLY information from the passages below. "
-    "Give a short answer (1-5 words). Do not explain. Do not add extra text.\n\n"
-    "Passages:\n{{ qcontext }}\n\n"
-    "Question: {{ query }}\n"
-    "Answer:"
-)
 
 
 def _passage_formatter(record: dict) -> str:
@@ -186,33 +178,6 @@ def save_per_query_traces(
         print(f"  Trace saved: {path} ({len(trace_df)} rows)")
 
 
-# ─── Reader Setup ─────────────────────────────────────────
-
-def get_reader():
-    """Load HuggingFace RAG reader, respecting offline mode."""
-    model_id = constants.RAG_MODEL_NAME
-    if getattr(constants, "OFFLINE_MODE", False):
-        local_path = os.path.join(
-            constants.MODELS_CACHE_DIR, model_id.split("/")[-1]
-        )
-        if os.path.exists(local_path):
-            model_id = local_path
-            print(f"Loading offline model: {model_id}")
-        else:
-            print(f"Loading model {model_id} (offline env set, relying on HF cache)")
-    else:
-        print(f"Loading HuggingFace model: {model_id}")
-
-    from pyterrier_rag import HuggingFaceBackend
-    from pyterrier_rag.readers import Reader
-
-    backend = HuggingFaceBackend(
-        model_id,
-        max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
-        generation_args={"temperature": 0.1, "do_sample": False},
-    )
-    return Reader(backend, prompt=RAG_PROMPT)
-
 
 # ─── Reranker Setup ───────────────────────────────────────
 
@@ -262,7 +227,7 @@ def main():
     print("=" * 60)
 
     gold_answers = get_gold_answers(topics)
-    reader = get_reader()
+    reader = get_reader(live=True)
 
     rag_runner = ExperimentRunner(
         name="experiment_5_rag",

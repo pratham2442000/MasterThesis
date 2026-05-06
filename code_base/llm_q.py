@@ -355,6 +355,10 @@ def preprep_dataset(
         print("No new questions to process. Returning existing dataset.")
         return pd.DataFrame(all_rewritten, columns=["q_id", "rewritten_queries"])
 
+    # sample limit if provided
+    if sample_limit is not None:
+        questions = random.sample(questions, sample_limit)
+
     for item in tqdm(questions, desc="Rewriting queries"):
         question = item[0]
         q_id = item[1]

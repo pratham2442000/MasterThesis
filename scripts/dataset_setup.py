@@ -107,8 +107,6 @@ def step_build_bm25_index():
         )
         index_ref = indexer.index(
             dataset.get_corpus_iter(),
-            fields=('text',),
-            meta=('docno', 'text'),
         )
 
     elif constants.DATASET_NAME == "dpr-w100":
@@ -119,13 +117,10 @@ def step_build_bm25_index():
         os.makedirs(INDEX_DIR, exist_ok=True)
         indexer = pt.IterDictIndexer(
             INDEX_DIR, overwrite=True,
-            meta={'docno': 256, 'text': 4096},
-            blocks=True,
+            meta={'docno': 256},
         )
         index_ref = indexer.index(
             dataset.get_corpus_iter(),
-            fields=('text',),
-            meta=('docno', 'text'),
         )
     else:
         # Custom datasets: load corpus into DataFrame first
@@ -179,7 +174,6 @@ def step_generate_rewrites():
 
     # Build questions list
     questions = list(zip(topics_df["query"], topics_df["qid"], topics_df["type"]))
-
     # Check if rewrites already exist
     n_rewrites = constants.LLM_REWRITES_PER_QUERY
     filename = f"{constants.DATASET_NAME}_rewritten_queries_dataset_{n_rewrites}_{constants.DATA_SPLIT}.csv"

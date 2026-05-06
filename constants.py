@@ -113,7 +113,7 @@ EXPERIMENT_5_TOP_K = 5  # Passages fed to generator
 EXPERIMENT_6_TOPIC_LIMIT = 500
 EXPERIMENT_6_RETRIEVAL_CUTOFF = 20
 EXPERIMENT_6_N_REWRITES = [int(i) for i in np.linspace(1, 30, 10, dtype=int)]
-EXPERIMENT_6_EVAL_METRICS = [rag_measures.EM, rag_measures.F1]
+EXPERIMENT_6_EVAL_METRICS = [rag_measures.EM, rag_measures.F1, ]
 EXPERIMENT_6_TOP_K = 5  # Passages fed to generator
 
 # ==================== Reranker Configuration ====================

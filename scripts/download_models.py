@@ -15,7 +15,8 @@ def main():
     models_to_download = [
         constants.RAG_MODEL_NAME,  # Generation
         constants.RERANKER_MODEL_NAME,  # Reranking
-        constants.DENSE_MODEL_NAME  # Dense Retrieval
+        constants.DENSE_MODEL_NAME,  # Dense Retrieval
+        constants.CROSS_ENCODER_MODEL_NAME  # Cross Encoder
     ]
 
     for model_id in models_to_download:

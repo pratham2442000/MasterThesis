@@ -441,7 +441,7 @@ def get_reader(live: bool):
         max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
         generation_args={"temperature": 0.1},
     )
-    reader = Reader(backend)
+    reader = Reader(backend, prompt=constants.RAG_PROMPT)
     return reader
 
 
@@ -496,6 +496,31 @@ def collect_experiment_metadata(
             "llm_rewrites_per_query": constants.LLM_REWRITES_PER_QUERY,
             "llm_temperature": constants.LLM_TEMPERATURE,
             "llm_model_name": constants.LLM_MODEL_NAME,
+        })
+    elif experiment_name == "experiment_5":
+        metadata.update({
+            "topic_limit": constants.EXPERIMENT_5_TOPIC_LIMIT,
+            "c_values": constants.EXPERIMENT_5_C_VALUES,
+            "retrieval_metrics": [str(m) for m in constants.EXPERIMENT_5_RETRIEVAL_METRICS],
+            "eval_metrics": [str(m) for m in constants.EXPERIMENT_5_EVAL_METRICS],
+            "top_k": constants.EXPERIMENT_5_TOP_K,
+            "offline_mode": constants.OFFLINE_MODE,
+            "rag_model_name": constants.RAG_MODEL_NAME,
+            "reranker_type": constants.RERANKER_TYPE,
+            "reranker_model_name": constants.RERANKER_MODEL_NAME,
+        })
+
+    elif experiment_name == "experiment_6":
+        metadata.update({
+            "topic_limit": constants.EXPERIMENT_6_TOPIC_LIMIT,
+            "retrieval_cutoff": constants.EXPERIMENT_6_RETRIEVAL_CUTOFF,
+            "n_rewrites": constants.EXPERIMENT_6_N_REWRITES,
+            "eval_metrics": [str(m) for m in constants.EXPERIMENT_6_EVAL_METRICS],
+            "top_k": constants.EXPERIMENT_6_TOP_K,
+            "offline_mode": constants.OFFLINE_MODE,
+            "rag_model_name": constants.RAG_MODEL_NAME,
+            "reranker_type": constants.RERANKER_TYPE,
+            "reranker_model_name": constants.RERANKER_MODEL_NAME,
         })
 
     if additional_metadata:

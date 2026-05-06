@@ -19,19 +19,13 @@ from code_base.experiment_utils import (
     plot_metrics,
     save_experiment_results,
     get_text_getter,
+    get_reader,
+    get_reranker,
 )
 from code_base.dataset_factory import get_gold_answers
 from pyterrier_rag.prompt import Concatenator
 
-# ─── Custom RAG Prompt ─────────────────────────────────────
-RAG_PROMPT = (
-    "You are given passages and a question. "
-    "Answer the question using ONLY information from the passages below. "
-    "Give a short answer (1-5 words). Do not explain. Do not add extra text.\n\n"
-    "Passages:\n{{ qcontext }}\n\n"
-    "Question: {{ query }}\n"
-    "Answer:"
-)
+
 
 # -----------------------------------------------------------------------------
 # Configuration & Constants
@@ -71,28 +65,7 @@ def setup_logging(rank: int, comm: MPI.Comm):
         comm.Barrier()
 
 
-def load_t5_reranker(batch_size: int, rank: int):
-    """Loads the MonoT5 reranker, preferring local paths for cluster execution."""
-    from pyterrier_t5 import MonoT5ReRanker
 
-    mono_t5_path = os.path.join(LOCAL_MODEL_BASE, "castorini/monot5-base-msmarco")
-    t5_tok_path = os.path.join(LOCAL_MODEL_BASE, "t5-base")
-
-    if os.path.exists(mono_t5_path):
-        logging.info(f"Rank {rank}: Loading local model from {mono_t5_path}")
-        tok_model = t5_tok_path if os.path.exists(t5_tok_path) else None
-        if not tok_model:
-            logging.warning(f"Rank {rank}: Local t5-base tokenizer not found.")
-
-        return MonoT5ReRanker(
-            model=mono_t5_path,
-            tok_model=tok_model,
-            verbose=False,
-            batch_size=batch_size,
-        )
-    else:
-        logging.warning(f"Rank {rank}: Local model not found. Attempting HF download.")
-        return MonoT5ReRanker(verbose=False, batch_size=batch_size)
 
 
 def build_rag_pipelines(c, *, index_ref, reranker, reader):
@@ -116,39 +89,7 @@ def build_rag_pipelines(c, *, index_ref, reranker, reader):
     }
 
 
-def get_reader(live: bool):
-    """Load HuggingFace RAG reader, respecting offline mode."""
-    if not live:
-        class DummyReader(pt.Transformer):
-            def transform(self, inp):
-                result = inp.copy()
-                result["qanswer"] = "dummy answer"
-                return result
 
-        return DummyReader()
-
-    model_id = constants.RAG_MODEL_NAME
-    if getattr(constants, "OFFLINE_MODE", False):
-        local_path = os.path.join(
-            constants.MODELS_CACHE_DIR, model_id.split("/")[-1]
-        )
-        if os.path.exists(local_path):
-            model_id = local_path
-            logging.info(f"Loading offline model: {model_id}")
-        else:
-            logging.info(f"Loading model {model_id} (offline env set, relying on HF cache)")
-    else:
-        logging.info(f"Loading HuggingFace model: {model_id}")
-
-    from pyterrier_rag import HuggingFaceBackend
-    from pyterrier_rag.readers import Reader
-
-    backend = HuggingFaceBackend(
-        model_id,
-        max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
-        generation_args={"temperature": 0.1, "do_sample": False},
-    )
-    return Reader(backend, prompt=RAG_PROMPT)
 
 
 def process_results(
@@ -273,7 +214,7 @@ def main():
 
         # 2. Initialize Models & Index
         index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-        reranker = load_t5_reranker(constants.T5_BATCH_SIZE, rank)
+        reranker = get_reranker()
         reader = get_reader(live=True)
         logging.info(f"Rank {rank}: Models loaded.")
 
