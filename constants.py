@@ -150,8 +150,6 @@ MODELS_CACHE_DIR = "./models"  # Path to local offline models
 RAG_MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 # DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 
-RAG_MODEL_MAX_NEW_TOKENS = 512
-RAG_CONCATENATOR_TOP_K = 5
 RAG_PROMPT = (
     "You are given passages and a question. "
     "Answer the question using ONLY information from the passages below. "
@@ -161,6 +159,8 @@ RAG_PROMPT = (
     "Answer:"
 )
 
+RAG_MODEL_MAX_NEW_TOKENS = 512
+RAG_CONCATENATOR_TOP_K = 5
 
 # TODO use mini-lm 0.6 reranker (info in sunar paper) / qwen 0.6 (repo: https://github.com/Mandeep-Rathee/gar_repro)
 # TODO LLM as judge
