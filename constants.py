@@ -14,14 +14,14 @@ from pyterrier.measures import R, nDCG
 
 # ==================== Dataset Selection ====================
 # Change this ONE value to switch all experiments to a different dataset.
-DATASET_NAME = "msmarco-passage"  # Options: "wiki_musique", "msmarco-passage"
+DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage"
 
 # ==================== Dataset-Specific Configuration ====================
 _DATASET_CONFIGS = {
     "wiki_musique": {
         "DATA_PATH": (
-            #  "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
+              "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
+#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
         ),
         "DATA_SPLIT": "dev",
         "INDEX_PATH": "./index/wiki_musique_index/data.properties",
@@ -35,8 +35,8 @@ _DATASET_CONFIGS = {
     },
     "msmarco-passage": {
         "DATA_PATH": (
-            #  "/scratch/pjohari/MasterThesis/data/msmarco-passage"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
+              "/scratch/pjohari/MasterThesis/data/msmarco-passage"
+#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
         ),
         "DATA_SPLIT": "19",  # -> irds:msmarco-passage/trec-dl-2019/judged
         "INDEX_PATH": "./index/msmarco_passage_index/data.properties",
@@ -45,8 +45,8 @@ _DATASET_CONFIGS = {
     },
     "dpr-w100": {
         "DATA_PATH": (
-            #  "/scratch/pjohari/MasterThesis/data/dpr-w100"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100"
+              "/scratch/pjohari/MasterThesis/data/dpr-w100"
+#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100"
         ),
         "DATA_SPLIT": "dev",  # -> irds:dpr-w100/trivia-qa/dev
         "INDEX_PATH": "./index/dpr_w100_index/data.properties",
@@ -63,8 +63,8 @@ DENSE_INDEX_PATH = _DATASET_CONFIGS[DATASET_NAME]["DENSE_INDEX_PATH"]
 EXPERIMENT_2_TYPE_DISTRIBUTION = _DATASET_CONFIGS[DATASET_NAME]["TYPE_DISTRIBUTION"]
 
 RESULTS_PATH = (
-    #  "/scratch/pjohari/MasterThesis/results/"
-    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
+      "/scratch/pjohari/MasterThesis/results/"
+#    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
 )
 
 DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
@@ -117,8 +117,7 @@ EXPERIMENT_6_EVAL_METRICS = [rag_measures.EM, rag_measures.F1, ]
 EXPERIMENT_6_TOP_K = 5  # Passages fed to generator
 
 # ==================== Reranker Configuration ====================
-# Options: "monot5", "cross_encoder"
-RERANKER_TYPE = "cross_encoder"
+RERANKER_TYPE = "cross_encoder" # Options: "monot5", "cross_encoder"
 RERANKER_MODEL_NAME = "castorini/monot5-base-msmarco"
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L6-v2"
 CROSS_ENCODER_BATCH_SIZE = 64
@@ -138,6 +137,15 @@ OFFLINE_MODE = True
 MODELS_CACHE_DIR = "./models"  # Path to local offline models
 RAG_MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 # DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
+
+RAG_PROMPT = (
+    "You are given passages and a question. "
+    "Answer the question using ONLY information from the passages below. "
+    "Give a short answer (1-5 words). Do not explain. Do not add extra text.\n\n"
+    "Passages:\n{{ qcontext }}\n\n"
+    "Question: {{ query }}\n"
+    "Answer:"
+)
 
 RAG_MODEL_MAX_NEW_TOKENS = 512
 RAG_CONCATENATOR_TOP_K = 5
