@@ -84,13 +84,10 @@ def setup_logging(rank: int, comm: MPI.Comm):
         comm.Barrier()
 
 
-
-
-
 def get_rag_pipelines(
         n_rewrites: int,
         index_ref: Any,
-        reranker: Any,
+        reranker: pt.Transformer,
         reader: Any,
         query_lookup: Dict[str, str],
         cutoff: int,
@@ -115,7 +112,7 @@ def get_rag_pipelines(
     from pyterrier_rag.prompt import Concatenator
 
     rewrite = QueryRewriteTransformer(n_rewrites, dataset_name=constants.DATASET_NAME)
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % cutoff
     text_getter = get_text_getter(index_ref)
     attach_query = AttachOriginalQuery(query_lookup)
     concat = Concatenator(max_elements=top_k)
@@ -325,8 +322,8 @@ def main():
         logging.info(f"Rank {rank}: Assigned {len(my_topics)} topics.")
 
         # 2. Initialize Models & Index
-        index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-        reranker = get_reranker()
+        index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+        reranker = get_reranker(models_base_dir=LOCAL_MODEL_BASE)
         reader = get_reader(live=True)
         logging.info(f"Rank {rank}: Models loaded (reranker + RAG reader).")
 

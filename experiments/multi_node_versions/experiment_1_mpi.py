@@ -8,7 +8,6 @@ import pandas as pd
 import pyterrier as pt
 from mpi4py import MPI
 from pyterrier.measures import R, nDCG
-from pyterrier_t5 import MonoT5ReRanker
 
 # Add parent directory to path to allow importing constants and code_base
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -17,6 +16,7 @@ import constants
 from code_base import dataset_factory
 from code_base.experiment_utils import (
     get_text_getter,
+    get_reranker,
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
@@ -107,32 +107,13 @@ def main():
         pt.terrier.set_helper_version("0.0.8")
         pt.init() 
         logging.info(f"Rank {rank}: PyTerrier initialized (Offline Mode, forced version).")
-            
-        index_ref = pt.IndexFactory.of(INDEX_PATH)
-        
-        # Initialize T5 (Uses local cache due to os.environ flags)
-        # Check for local model path first
-        local_model_path = "/scratch/pjohari/MasterThesis/models"
-        mono_t5_model_path = os.path.join(local_model_path, "castorini/monot5-base-msmarco")
-        t5_base_path = os.path.join(local_model_path, "t5-base")
-        
-        if os.path.exists(mono_t5_model_path):
-            logging.info(f"Rank {rank}: Found local model at {mono_t5_model_path}. Using it.")
 
-            if os.path.exists(t5_base_path):
-                 logging.info(f"Rank {rank}: Found local t5-base at {t5_base_path}. Setting as tokenizer/config fallback.")
-                 mono_t5_reranker = MonoT5ReRanker(
-                     model=mono_t5_model_path,
-                     tok_model=t5_base_path,
-                     verbose=False, 
-                     batch_size=T5_BATCH_SIZE
-                 )
-            else:
-                 logging.warning(f"Rank {rank}: Local t5-base not found. Using monoT5 model path only.")
-                 mono_t5_reranker = MonoT5ReRanker(model=mono_t5_model_path, verbose=False, batch_size=T5_BATCH_SIZE)
-        else:
-            logging.warning(f"Rank {rank}: Local model not found at {mono_t5_model_path}. Attempting download (will fail if offline).")
-            mono_t5_reranker = MonoT5ReRanker(verbose=False, batch_size=T5_BATCH_SIZE)
+        index_ref = pt.IndexFactory.of(INDEX_PATH, memory=True)
+
+        # Initialize reranker via centralized factory
+        LOCAL_MODEL_BASE = "/scratch/pjohari/MasterThesis/models"
+        mono_t5_reranker = get_reranker(models_base_dir=LOCAL_MODEL_BASE)
+        logging.info(f"Rank {rank}: Reranker loaded.")
 
         local_results_list = []
 
@@ -140,7 +121,7 @@ def main():
             logging.info(f"Starting experiment for initial cutoff (c) in: {C_VALUES}")
 
         for c in C_VALUES:
-            bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
+            bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10)
             bm25_retrieved = bm25 % c
             pipeline = bm25_retrieved >> get_text_getter(index_ref) >> mono_t5_reranker
 
@@ -222,7 +203,7 @@ def main():
                 results_df,
                 x_col="c",
                 metric_cols=["BM25_R@10", "Pipeline_R@10"],
-                labels=["BM25 Baseline", "BM25 + MonoT5 Re-ranker"],
+                labels=["BM25 Baseline", f"BM25 + {constants.RERANKER_NAME} Re-ranker"],
                 title="Effect of Initial Cutoff (c) on Recall (R@10)",
                 xlabel="Initial Cutoff (c) for BM25 Retrieval",
                 filename="/cutoff_vs_R.png",

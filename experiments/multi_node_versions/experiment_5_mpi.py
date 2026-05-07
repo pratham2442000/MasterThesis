@@ -70,7 +70,7 @@ def setup_logging(rank: int, comm: MPI.Comm):
 
 def build_rag_pipelines(c, *, index_ref, reranker, reader):
     """Full RAG pipeline for a given cutoff *c*."""
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % c
     retrieval_pipe = (
             bm25
             >> get_text_getter(index_ref)
@@ -128,7 +128,7 @@ def process_results(
 def generate_plots(df: pd.DataFrame, output_dir: str):
     """Generate plots for experiment 5 results."""
     systems = [
-        ("Full_RAG_with_reranker", "Full RAG with reranker"),
+        ("Full_RAG_with_reranker", f"Full RAG with {constants.RERANKER_NAME}"),
         ("Full_RAG_without_reranker", "Full RAG without reranker")
     ]
 
@@ -213,8 +213,8 @@ def main():
         logging.info(f"Rank {rank}: Assigned {len(my_topics)} topics.")
 
         # 2. Initialize Models & Index
-        index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-        reranker = get_reranker()
+        index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+        reranker = get_reranker(models_base_dir=LOCAL_MODEL_BASE)
         reader = get_reader(live=True)
         logging.info(f"Rank {rank}: Models loaded.")
 

@@ -10,7 +10,6 @@ import pandas as pd
 import pyterrier as pt
 from mpi4py import MPI
 from pyterrier.measures import R, nDCG
-from pyterrier_t5 import MonoT5ReRanker
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -19,6 +18,7 @@ import constants
 from code_base import dataset_factory
 from code_base.experiment_utils import (
     get_text_getter,
+    get_reranker,
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
@@ -75,34 +75,13 @@ def setup_logging(rank: int, comm: MPI.Comm):
         comm.Barrier()
 
 
-def load_t5_reranker(batch_size: int, rank: int) -> MonoT5ReRanker:
-    """Loads the MonoT5 reranker, preferring local paths for cluster execution."""
-    mono_t5_path = os.path.join(LOCAL_MODEL_BASE, "castorini/monot5-base-msmarco")
-    t5_tok_path = os.path.join(LOCAL_MODEL_BASE, "t5-base")
 
-    if os.path.exists(mono_t5_path):
-        logging.info(f"Rank {rank}: Loading local model from {mono_t5_path}")
-
-        # Check for local tokenizer/config fallback
-        tok_model = t5_tok_path if os.path.exists(t5_tok_path) else None
-        if not tok_model:
-            logging.warning(f"Rank {rank}: Local t5-base tokenizer not found. Using model path only.")
-
-        return MonoT5ReRanker(
-            model=mono_t5_path,
-            tok_model=tok_model,
-            verbose=False,
-            batch_size=batch_size
-        )
-    else:
-        logging.warning(f"Rank {rank}: Local model not found. Attempting HF download.")
-        return MonoT5ReRanker(verbose=False, batch_size=batch_size)
 
 
 def get_pipelines(
         n_rewrites: int,
         index_ref: Any,
-        reranker: MonoT5ReRanker,
+        reranker: pt.Transformer,
         query_lookup: Dict[str, str],
         cutoff: int
 ) -> Dict[str, Any]:
@@ -110,7 +89,7 @@ def get_pipelines(
 
     # Transformers
     rewrite = QueryRewriteTransformer(n_rewrites, dataset_name=constants.DATASET_NAME)
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % cutoff
     text_getter = get_text_getter(index_ref)
     attach_query = AttachOriginalQuery(query_lookup)
     merge_rewrites = MergeRewrites()
@@ -257,7 +236,7 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
 
     systems = [
         ("BM25", "BM25 Baseline"),
-        ("BM25_MonoT5", "BM25 + MonoT5"),
+        ("BM25_MonoT5", f"BM25 + {constants.RERANKER_NAME}"),
         ("Pipeline_Dedup", "Dedup Method"),
         ("Pipeline_DedupCutoff", "Dedup Cutoff Method"),
         ("Pipeline_Borda", "Borda Voting"),
@@ -368,8 +347,8 @@ def main():
         logging.info(f"Rank {rank}: Assigned {len(my_topics)} topics.")
 
         # 2. Initialize Models & Index
-        index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-        reranker = load_t5_reranker(constants.T5_BATCH_SIZE, rank)
+        index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+        reranker = get_reranker(models_base_dir=LOCAL_MODEL_BASE)
 
         # 3. Experiment Loop
         local_results_list = []

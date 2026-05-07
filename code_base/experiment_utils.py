@@ -44,25 +44,29 @@ def get_text_getter(index_ref=None):
         return pt.text.get_text(index_ref, "text")
 
 
-def get_reranker():
+def get_reranker(models_base_dir=None):
     """Returns a reranker based on ``constants.RERANKER_TYPE``.
 
     Supports ``"monot5"`` (MonoT5ReRanker) and ``"cross_encoder"``
-    (CrossEncoderReRanker). Respects offline mode for MonoT5.
+    (CrossEncoderReRanker). Respects offline mode and cluster paths.
+
+    Args:
+        models_base_dir: Optional override for model cache directory
+            (e.g. ``"/scratch/.../models"`` on cluster). Falls back
+            to ``constants.MODELS_CACHE_DIR``.
 
     Returns:
         A PyTerrier Transformer that reranks documents.
     """
     rtype = getattr(constants, "RERANKER_TYPE", "monot5")
+    cache_dir = models_base_dir or constants.MODELS_CACHE_DIR
 
     if rtype == "cross_encoder":
         from code_base.cross_encoder_reranker import CrossEncoderReRanker
 
         model_id = constants.CROSS_ENCODER_MODEL_NAME
-        if getattr(constants, "OFFLINE_MODE", False):
-            local_path = os.path.join(
-                constants.MODELS_CACHE_DIR, model_id.split("/")[-1]
-            )
+        if getattr(constants, "OFFLINE_MODE", False) or models_base_dir:
+            local_path = os.path.join(cache_dir, model_id.split("/")[-1])
             if os.path.exists(local_path):
                 model_id = local_path
                 print(f"Loading offline CrossEncoder: {model_id}")
@@ -78,17 +82,23 @@ def get_reranker():
         from pyterrier_t5 import MonoT5ReRanker
 
         model_id = constants.RERANKER_MODEL_NAME
-        if getattr(constants, "OFFLINE_MODE", False):
-            local_path = os.path.join(
-                constants.MODELS_CACHE_DIR, model_id.split("/")[-1]
-            )
+        tok_model = None
+
+        if getattr(constants, "OFFLINE_MODE", False) or models_base_dir:
+            local_path = os.path.join(cache_dir, model_id.replace("/", os.sep))
             if os.path.exists(local_path):
                 model_id = local_path
                 print(f"Loading offline MonoT5: {model_id}")
 
+                # MonoT5 needs separate t5-base tokenizer on cluster
+                t5_tok_path = os.path.join(cache_dir, "t5-base")
+                if os.path.exists(t5_tok_path):
+                    tok_model = t5_tok_path
+
         print(f"Using MonoT5ReRanker ({model_id})")
         return MonoT5ReRanker(
             model=model_id,
+            tok_model=tok_model,
             verbose=False,
             batch_size=constants.T5_BATCH_SIZE,
         )
@@ -366,7 +376,7 @@ def build_retrieval_pipeline(index_ref, reranker, cutoff):
     """
     import pyterrier as pt
 
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10)
     bm25_retrieved = bm25 % cutoff
 
     pipeline = (
@@ -501,7 +511,6 @@ def collect_experiment_metadata(
         metadata.update({
             "topic_limit": constants.EXPERIMENT_5_TOPIC_LIMIT,
             "c_values": constants.EXPERIMENT_5_C_VALUES,
-            "retrieval_metrics": [str(m) for m in constants.EXPERIMENT_5_RETRIEVAL_METRICS],
             "eval_metrics": [str(m) for m in constants.EXPERIMENT_5_EVAL_METRICS],
             "top_k": constants.EXPERIMENT_5_TOP_K,
             "offline_mode": constants.OFFLINE_MODE,

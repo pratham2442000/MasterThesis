@@ -50,7 +50,7 @@ def step_build_bm25_index():
     if os.path.exists(constants.INDEX_PATH):
         print(f"  ✓ Index already exists at {constants.INDEX_PATH}")
         try:
-            index = pt.IndexFactory.of(constants.INDEX_PATH)
+            index = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
             n_docs = index.getCollectionStatistics().getNumberOfDocuments()
             print(f"  ✓ Index valid — {n_docs} documents")
             print("  Skipping index creation.")
@@ -68,7 +68,7 @@ def step_build_bm25_index():
             print(f"  ✓ Pre-built index obtained: {index_ref}")
 
             # Verify index works
-            index = pt.IndexFactory.of(index_ref)
+            index = pt.IndexFactory.of(index_ref, memory=True)
             n_docs = index.getCollectionStatistics().getNumberOfDocuments()
             print(f"  ✓ Index has {n_docs} documents")
 

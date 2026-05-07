@@ -6,7 +6,7 @@
   "dataset_name": "wiki_musique",
   "index_path": "./index/wiki_musique_index/data.properties",
   "reranker_type": "cross_encoder",
-  "reranker_model_name": "castorini/monot5-base-msmarco",
+  "reranker_model_name": "MiniLM-L6",
   "topic_limit": 500,
   "c_values": [
     10,

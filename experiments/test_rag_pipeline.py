@@ -93,7 +93,7 @@ class PassthroughReranker(pt.Transformer):
 # ---------------------------------------------------------
 def build_retrieval_pipeline(index_ref, reranker, cutoff):
     """BM25 + T5 reranker (retrieval-only, no generation)."""
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10)
     bm25_retrieved = bm25 % cutoff
 
     pipeline = (
@@ -161,7 +161,7 @@ def retrieval_pipeline_factory(cutoff, *, index_ref, reranker):
     }
 
 def rag_pipeline_factory(cutoff, *, index_ref, reranker, reader):
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % cutoff
     _, retrieval_pipe = build_retrieval_pipeline(
         index_ref, reranker, cutoff
     )
@@ -243,14 +243,14 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
 
     # --- Step 2: Setup index ---
     print(f"\n[STEP 2] Loading index from {constants.INDEX_PATH}...")
-    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-    index = pt.IndexFactory.of(constants.INDEX_PATH)
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+    index = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     print(f"  Index docs: {index.getCollectionStatistics().getNumberOfDocuments()}")
     print(f"  ✓ Index loaded")
 
     # --- Step 3: BM25 retrieval ---
     print(f"\n[STEP 3] BM25 retrieval (cutoff={cutoff})...")
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10)
     bm25_cut = bm25 % cutoff
 
     bm25_results = bm25_cut.transform(single_topic)
@@ -418,7 +418,7 @@ def main():
     print("SETTING UP INDEX & MODELS")
     print("=" * 60)
 
-    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
 
     if args.live:
         reranker = get_reranker()

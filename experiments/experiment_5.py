@@ -45,7 +45,7 @@ def build_retrieval_pipelines(c, *, index_ref, reranker):
     Returns:
         Dict mapping system names to retrieval pipelines.
     """
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % c
     pipeline_rerank = (
             bm25
             >> get_text_getter(index_ref)
@@ -63,7 +63,7 @@ def build_rag_pipelines(c, *, index_ref, reranker, reader):
     Returns:
         Dict mapping system name to RAG pipeline.
     """
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % c
     retrieval_pipe = (
             bm25
             >> get_text_getter(index_ref)
@@ -89,7 +89,7 @@ RETRIEVAL_PLOT_CONFIGS = [
         "type": "metrics",
         "x_col": "c",
         "metric_cols": ["BM25_R@10", "BM25+Reranker_R@10"],
-        "labels": ["BM25 Baseline", "BM25 + MonoT5"],
+        "labels": ["BM25 Baseline", f"BM25 + {constants.RERANKER_NAME}"],
         "title": "Effect of Cutoff (c) on Recall (R@10) — RAG Retrieval",
         "xlabel": "Initial Cutoff (c) for BM25 Retrieval",
         "filename": "exp5_cutoff_vs_R10.png",
@@ -99,7 +99,7 @@ RETRIEVAL_PLOT_CONFIGS = [
         "type": "metrics",
         "x_col": "c",
         "metric_cols": ["BM25_R@100", "BM25+Reranker_R@100"],
-        "labels": ["BM25 Baseline", "BM25 + MonoT5"],
+        "labels": ["BM25 Baseline", f"BM25 + {constants.RERANKER_NAME}"],
         "title": "Effect of Cutoff (c) on Recall (R@100) — RAG Retrieval",
         "xlabel": "Initial Cutoff (c) for BM25 Retrieval",
         "filename": "exp5_cutoff_vs_R100.png",
@@ -206,7 +206,7 @@ def main():
     results_dir = retrieval_runner.setup()
     topics, qrels, _ = retrieval_runner.load_data()
 
-    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     reranker = _get_reranker()
 
     ret_df = retrieval_runner.run_sweep(

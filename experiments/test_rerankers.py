@@ -121,8 +121,8 @@ def main():
     print(f"Topics: {len(topics)}, Qrels: {len(qrels_df)}")
 
     # Index
-    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % args.cutoff
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % args.cutoff
     get_text = get_text_getter(index_ref)
 
     # BM25 baseline results (shared across all rerankers)

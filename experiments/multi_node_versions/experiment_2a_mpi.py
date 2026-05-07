@@ -11,7 +11,6 @@ import pyterrier as pt
 import pyterrier_dr as pt_dr
 from mpi4py import MPI
 from pyterrier.measures import R, nDCG
-from pyterrier_t5 import MonoT5ReRanker
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -20,6 +19,7 @@ import constants
 from code_base import dataset_factory
 from code_base.experiment_utils import (
     get_text_getter,
+    get_reranker,
     plot_metrics,
     plot_with_regression,
     save_experiment_results,
@@ -75,28 +75,7 @@ def setup_logging(rank: int, comm: MPI.Comm):
         comm.Barrier()
 
 
-def load_t5_reranker(batch_size: int, rank: int) -> MonoT5ReRanker:
-    """Loads the MonoT5 reranker, preferring local paths for cluster execution."""
-    mono_t5_path = os.path.join(LOCAL_MODEL_BASE, "castorini/monot5-base-msmarco")
-    t5_tok_path = os.path.join(LOCAL_MODEL_BASE, "t5-base")
 
-    if os.path.exists(mono_t5_path):
-        logging.info(f"Rank {rank}: Loading local model from {mono_t5_path}")
-
-        # Check for local tokenizer/config fallback
-        tok_model = t5_tok_path if os.path.exists(t5_tok_path) else None
-        if not tok_model:
-            logging.warning(f"Rank {rank}: Local t5-base tokenizer not found. Using model path only.")
-
-        return MonoT5ReRanker(
-            model=mono_t5_path,
-            tok_model=tok_model,
-            verbose=False,
-            batch_size=batch_size
-        )
-    else:
-        logging.warning(f"Rank {rank}: Local model not found. Attempting HF download.")
-        return MonoT5ReRanker(verbose=False, batch_size=batch_size)
 
 
 def load_dense_model_and_index(rank: int):
@@ -126,7 +105,7 @@ def load_dense_model_and_index(rank: int):
 def get_pipelines(
         n_rewrites: int,
         index_ref: Any,
-        mono_t5: MonoT5ReRanker,
+        reranker: pt.Transformer,
         dense_retriever: Any,
         query_lookup: Dict[str, str],
         cutoff: int
@@ -142,7 +121,7 @@ def get_pipelines(
     dense_base = dense_retriever % cutoff
 
     # 2. Dense + MonoT5
-    pipeline_dense_t5 = dense_base >> get_text >> mono_t5
+    pipeline_dense_t5 = dense_base >> get_text >> reranker
 
     # Pipeline 4: Dedup
     p_dedup = (rewrite
@@ -151,7 +130,7 @@ def get_pipelines(
                >> attach_query
                >> Dedup()
                >> get_text
-               >> mono_t5)
+               >> reranker)
 
     # Pipeline 5: Borda Voting
     borda_voting = BordaVotingTransformerV2(cutoff=cutoff, weight=None, method="borda")
@@ -160,7 +139,7 @@ def get_pipelines(
                >> borda_voting
                >> attach_query
                >> get_text
-               >> mono_t5)
+               >> reranker)
 
     # Pipeline 6: Weighted Borda
     borda_weighted = BordaVotingTransformerV2(
@@ -173,7 +152,7 @@ def get_pipelines(
                         >> borda_weighted
                         >> attach_query
                         >> get_text
-                        >> mono_t5)
+                        >> reranker)
 
     # Pipeline 7: CombMAX
     p_combmax = (rewrite
@@ -182,7 +161,7 @@ def get_pipelines(
                  >> attach_query
                  >> CombMAXTransformer()
                  >> get_text
-                 >> mono_t5)
+                 >> reranker)
 
     # Pipeline 8: RRF (Reciprocal Rank Fusion)
     p_rrf = (rewrite
@@ -191,7 +170,7 @@ def get_pipelines(
              >> attach_query
              >> RRFTransformer()
              >> get_text
-             >> mono_t5)
+             >> reranker)
 
     return {
         "Dense": dense_base,
@@ -364,14 +343,14 @@ def main():
 
         # 2. Initialize Models & Index
         # We need the sparse index get_text
-        index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+        index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
 
         # Dense Setup
         model, dense_index = load_dense_model_and_index(rank)
         dense_retriever = model.query_encoder() >> dense_index.retriever()
 
         # Reranker
-        mono_t5 = load_t5_reranker(constants.T5_BATCH_SIZE, rank)
+        reranker = get_reranker(models_base_dir=LOCAL_MODEL_BASE)
 
         # 3. Experiment Loop
         local_results_list = []
@@ -385,7 +364,7 @@ def main():
                 logging.info(f"Running pipelines for N={N}...")
                 
             systems_dict = get_pipelines(
-                N, index_ref, mono_t5, dense_retriever,
+                N, index_ref, reranker, dense_retriever,
                 query_lookup, constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
             )
 

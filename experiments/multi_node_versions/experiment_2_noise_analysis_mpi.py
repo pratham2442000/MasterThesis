@@ -8,14 +8,13 @@ import numpy as np
 import pandas as pd
 import pyterrier as pt
 from mpi4py import MPI
-from pyterrier_t5 import MonoT5ReRanker
 
 # Add parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 import constants
 from code_base import dataset_factory
-from code_base.experiment_utils import get_text_getter, save_experiment_results
+from code_base.experiment_utils import get_text_getter, save_experiment_results, get_reranker
 from code_base.transformers import (
     preprocess_query,
     QueryRewriteTransformer,
@@ -61,28 +60,7 @@ def setup_logging(rank: int, comm: MPI.Comm):
         comm.Barrier()
 
 
-def load_t5_reranker(batch_size: int, rank: int) -> MonoT5ReRanker:
-    """Loads the MonoT5 reranker, preferring local paths for cluster execution."""
-    mono_t5_path = os.path.join(LOCAL_MODEL_BASE, "castorini/monot5-base-msmarco")
-    t5_tok_path = os.path.join(LOCAL_MODEL_BASE, "t5-base")
 
-    if os.path.exists(mono_t5_path):
-        logging.info(f"Rank {rank}: Loading local model from {mono_t5_path}")
-
-        # Check for local tokenizer/config fallback
-        tok_model = t5_tok_path if os.path.exists(t5_tok_path) else None
-        if not tok_model:
-            logging.warning(f"Rank {rank}: Local t5-base tokenizer not found. Using model path only.")
-
-        return MonoT5ReRanker(
-            model=mono_t5_path,
-            tok_model=tok_model,
-            verbose=False,
-            batch_size=batch_size
-        )
-    else:
-        logging.warning(f"Rank {rank}: Local model not found. Attempting HF download.")
-        return MonoT5ReRanker(verbose=False, batch_size=batch_size)
 
 
 def calculate_oracle_recall(res_df, qrels_df, cutoff=10):
@@ -242,8 +220,8 @@ def main():
         logging.info(f"Rank {rank}: Assigned {len(my_topics)} topics.")
 
         # 2. Initialize Models & Index
-        index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
-        reranker = load_t5_reranker(constants.T5_BATCH_SIZE, rank)
+        index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+        reranker = get_reranker(models_base_dir=LOCAL_MODEL_BASE)
         get_text = get_text_getter(index_ref)
 
         # Evaluation cutoff (consistent with EXPERIMENT_2_EVAL_METRICS using R@10)
@@ -261,7 +239,7 @@ def main():
 
             # Construct Oracle Pipeline: Rewrite -> BM25 -> GetText -> Rerank
             rewrite_trans = QueryRewriteTransformer(n, dataset_name=constants.DATASET_NAME)
-            bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
+            bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
 
             oracle_pipeline = (rewrite_trans
                                >> bm25

@@ -96,7 +96,7 @@ def build_pipelines(
 
 SYSTEMS = [
     ("Dense", "Dense Baseline"),
-    ("Dense_MonoT5", "Dense + MonoT5"),
+    ("Dense_MonoT5", f"Dense + {constants.RERANKER_NAME}"),
     ("Pipeline_Dedup", "Dedup Method"),
     ("Pipeline_Borda", "Borda Voting"),
     ("Pipeline_BordaWeighted", "Borda Weighted"),
@@ -159,7 +159,7 @@ def main():
     index = pt_dr.FlexIndex(constants.DENSE_INDEX_PATH)
     dense_retriever = model.query_encoder() >> index.retriever()
 
-    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     reranker = get_reranker()
 
     topics, qrels, query_lookup = runner.load_data(

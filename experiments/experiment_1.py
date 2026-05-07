@@ -34,7 +34,7 @@ def build_pipelines(c, *, index_ref, reranker):
     Returns:
         Dict mapping system names to pipelines.
     """
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % c
     pipeline_t5 = (
             bm25
             >> get_text_getter(index_ref)
@@ -53,7 +53,7 @@ PLOT_CONFIGS = [
         "type": "metrics",
         "x_col": "c",
         "metric_cols": ["BM25_R@10", "Pipeline_R@10"],
-        "labels": ["BM25 Baseline", "BM25 + MonoT5 Re-ranker"],
+        "labels": ["BM25 Baseline", f"BM25 + {constants.RERANKER_NAME} Re-ranker"],
         "title": "Effect of Initial Cutoff (c) on Recall (R@10)",
         "xlabel": "Initial Cutoff (c) for BM25 Retrieval",
         "filename": "cutoff_vs_R.png",
@@ -63,7 +63,7 @@ PLOT_CONFIGS = [
         "type": "metrics",
         "x_col": "c",
         "metric_cols": ["BM25_nDCG@10", "Pipeline_nDCG@10"],
-        "labels": ["BM25 Baseline", "BM25 + MonoT5 Re-ranker"],
+        "labels": ["BM25 Baseline", f"BM25 + {constants.RERANKER_NAME} Re-ranker"],
         "title": "Effect of Initial Cutoff (c) on NDCG@10",
         "xlabel": "Initial Cutoff (c) for BM25 Retrieval",
         "ylabel": "NDCG@10",
@@ -74,7 +74,7 @@ PLOT_CONFIGS = [
         "type": "regression",
         "x_col": "c",
         "metric_cols": ["BM25_R@10", "Pipeline_R@10"],
-        "labels": ["BM25 R@10", "Pipeline R@10"],
+        "labels": ["BM25 R@10", f"{constants.RERANKER_NAME} R@10"],
         "use_log_scale": True,
         "title": "R@10 vs. Initial Cutoff (c) Regression",
         "xlabel": "Initial Cutoff (c) (log scale)",
@@ -99,7 +99,7 @@ def main():
     results_dir = runner.setup()
     topics, qrels, _ = runner.load_data()
 
-    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     reranker = get_reranker()
 
     results_df = runner.run_sweep(

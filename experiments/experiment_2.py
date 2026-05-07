@@ -45,7 +45,7 @@ def build_pipelines(n, *, index_ref, reranker, query_lookup, cutoff):
         Dict of ``{system_name: pipeline}``.
     """
     rewrite = QueryRewriteTransformer(n, dataset_name=constants.DATASET_NAME)
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % cutoff
     attach = AttachOriginalQuery(query_lookup)
     get_text = get_text_getter(index_ref)
 
@@ -87,7 +87,7 @@ def build_pipelines(n, *, index_ref, reranker, query_lookup, cutoff):
 
 SYSTEMS = [
     ("BM25", "BM25 Baseline"),
-    ("BM25_MonoT5", "BM25 + MonoT5"),
+    ("BM25_MonoT5", f"BM25 + {constants.RERANKER_NAME}"),
     # ("Pipeline_Dedup", "Dedup Method"),
     ("Pipeline_DedupCutoff", "Dedup Cutoff Method"),
     ("Pipeline_Borda", "Borda Voting"),
@@ -159,7 +159,7 @@ def main():
         filter_by_rewrites=True, use_tail=True,
     )
 
-    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     reranker = get_reranker()
 
     results_df = runner.run_sweep(
