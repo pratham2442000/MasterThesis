@@ -129,7 +129,7 @@ EXPERIMENT_6_TOP_K = 5  # Passages fed to generator
 # ==================== Reranker Configuration ====================
 # Options: "monot5", "cross_encoder"
 RERANKER_TYPE = "cross_encoder"
-RERANKER_NAME = "Cross-Encoder" if RERANKER_TYPE == "MiniLM-L6" else "MonoT5"
+RERANKER_NAME = "MiniLM-L6" if RERANKER_TYPE == "cross_encoder" else "MonoT5"
 RERANKER_MODEL_NAME = "castorini/monot5-base-msmarco"
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L6-v2"
 CROSS_ENCODER_BATCH_SIZE = 64
@@ -162,7 +162,8 @@ RAG_PROMPT = (
 RAG_MODEL_MAX_NEW_TOKENS = 512
 RAG_CONCATENATOR_TOP_K = 5
 
-# TODO use mini-lm 0.6 reranker (info in sunar paper) / qwen 0.6 (repo: https://github.com/Mandeep-Rathee/gar_repro)
-# TODO LLM as judge
-# TODO ORE index making using built scipts for wiki
-# TODO have documents as the x axis not the number of queries (i.e find the average number of documents considered after merge(i.e before reranker) for each query rewrite)
+# TODO use mini-lm 0.6 reranker (info in sunar paper) DONE
+# TODO use qwen 0.6 (repo: https://github.com/Mandeep-Rhttps://github.com/Mandeep-Rathee/gar_reproathee/gar_repro)
+# TODO LLM as judge 
+# TODO ORE index making using built scipts for wiki DONE(Questions)
+# TODO have documents as the x axis not the number of queries (i.e find the average number of documents considered after merge(i.e before reranker) for each query rewrite) #still need to figure out how
