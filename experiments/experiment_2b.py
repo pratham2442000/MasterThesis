@@ -47,7 +47,7 @@ def build_pipelines(n, *, index_ref, reranker, cutoff):
         Dict of ``{system_name: pipeline}``.
     """
     rewrite = QueryRewriteTransformer(n, dataset_name=constants.DATASET_NAME)
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % cutoff
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
     get_text = get_text_getter(index_ref)
 
     # Shared rerank-per-rewrite prefix

@@ -47,8 +47,9 @@ def get_text_getter(index_ref=None):
 def get_reranker(models_base_dir=None):
     """Returns a reranker based on ``constants.RERANKER_TYPE``.
 
-    Supports ``"monot5"`` (MonoT5ReRanker) and ``"cross_encoder"``
-    (CrossEncoderReRanker). Respects offline mode and cluster paths.
+    Supports ``"monot5"`` (MonoT5ReRanker), ``"cross_encoder"``
+    (CrossEncoderReRanker), and ``"qwen_reranker"`` (QwenRerankerVLLM).
+    Respects offline mode and cluster paths.
 
     Args:
         models_base_dir: Optional override for model cache directory
@@ -61,7 +62,24 @@ def get_reranker(models_base_dir=None):
     rtype = getattr(constants, "RERANKER_TYPE", "monot5")
     cache_dir = models_base_dir or constants.MODELS_CACHE_DIR
 
-    if rtype == "cross_encoder":
+    if rtype == "qwen_reranker":
+        from code_base.qwen_reranker import QwenRerankerVLLM
+
+        model_id = constants.QWEN_RERANKER_MODEL_NAME
+        if getattr(constants, "OFFLINE_MODE", False) or models_base_dir:
+            local_path = os.path.join(cache_dir, model_id.split("/")[-1])
+            if os.path.exists(local_path):
+                model_id = local_path
+                print(f"Loading offline QwenReranker: {model_id}")
+
+        print(f"Using QwenRerankerVLLM ({model_id})")
+        return QwenRerankerVLLM(
+            model=model_id,
+            batch_size=constants.QWEN_RERANKER_BATCH_SIZE,
+            verbose=False,
+        )
+
+    elif rtype == "cross_encoder":
         from code_base.cross_encoder_reranker import CrossEncoderReRanker
 
         model_id = constants.CROSS_ENCODER_MODEL_NAME
@@ -481,7 +499,9 @@ def collect_experiment_metadata(
         "index_path": constants.INDEX_PATH,
         "reranker_type": constants.RERANKER_TYPE,
         "reranker_model_name": (
-            constants.CROSS_ENCODER_MODEL_NAME
+            constants.QWEN_RERANKER_MODEL_NAME
+            if constants.RERANKER_TYPE == "qwen_reranker"
+            else constants.CROSS_ENCODER_MODEL_NAME
             if constants.RERANKER_TYPE == "cross_encoder"
             else constants.RERANKER_MODEL_NAME
         ),

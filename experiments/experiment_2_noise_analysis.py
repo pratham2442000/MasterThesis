@@ -210,7 +210,7 @@ def main():
             n, dataset_name=constants.DATASET_NAME
         )
         bm25 = (
-                pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10)
+                pt.terrier.Retriever(index_ref, wmodel="BM25")
                 % cutoff
         )
         oracle_pipeline = rewriter >> bm25 >> get_text >> reranker

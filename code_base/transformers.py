@@ -397,63 +397,34 @@ class CombMAXTransformer(pt.Transformer):
 # ─────────────────────────────────────────────
 
 class RRFTransformer(pt.Transformer):
-    """Reciprocal Rank Fusion across sub-query result lists.
-
-    Fused score: ``RRF(d) = Σ 1 / (k + rank_i(d))``
-
-    Works on both pre- and post-MergeRewrites data. When ``orig_qid``
-    is present, sub-queries are identified via the ``qid`` column;
-    otherwise ranks are computed per ``qid``.
-
-    Args:
-        k: RRF constant (default 60).
-    """
-
     def __init__(self, k: int = 60):
         self.k = k
 
     def transform(self, res: pd.DataFrame) -> pd.DataFrame:
-        """Apply RRF scoring.
-
-        Args:
-            res: Result DataFrame.
-
-        Returns:
-            Fused DataFrame with ``qid``, ``docno``, ``score``, ``rank``.
-        """
         if res.empty:
             return res
 
         res = res.copy()
-        has_orig_qid = "orig_qid" in res.columns
 
-        if has_orig_qid:
-            res = res.sort_values(["qid", "score"], ascending=[True, False])
-            res["_sub_rank"] = res.groupby("qid").cumcount() + 1
-            res["_base_qid"] = (
-                res["qid"].astype(str).apply(lambda x: x.split("_")[0])
-            )
-        else:
-            res = res.sort_values(["qid", "score"], ascending=[True, False])
-            res["_sub_rank"] = res.groupby("qid").cumcount() + 1
-            res["_base_qid"] = res["qid"].astype(str)
+        # 1. Calculate ranks within each specific rewrite (qid)
+        # We MUST do this before merging IDs.
+        res = res.sort_values(["qid", "score"], ascending=[True, False])
+        res["_rank"] = res.groupby("qid").cumcount() + 1
 
-        out_rows: list[dict] = []
+        # 2. Calculate the RRF weight
+        res["_rrf_weight"] = 1.0 / (self.k + res["_rank"])
 
-        for base_qid, group in res.groupby("_base_qid"):
-            doc_scores: Dict[str, float] = defaultdict(float)
-            for _, row in group.iterrows():
-                doc_scores[row["docno"]] += 1.0 / (self.k + row["_sub_rank"])
+        # 3. Identify the grouping ID (prefer orig_qid if QueryRewriteTransformer was used)
+        group_col = "orig_qid" if "orig_qid" in res.columns else "qid"
 
-            sorted_docs = sorted(
-                doc_scores.items(), key=lambda x: x[1], reverse=True
-            )
-            for rank, (docno, score) in enumerate(sorted_docs, 1):
-                out_rows.append({
-                    "qid": base_qid,
-                    "docno": docno,
-                    "score": score,
-                    "rank": rank,
-                })
+        # 4. Sum scores (Vectorized - much faster than iterrows)
+        fused = res.groupby([group_col, "docno"], as_index=False).agg({
+            "_rrf_weight": "sum",
+            "query": "first"  # Keep the query text for downstream rerankers
+        }).rename(columns={"_rrf_weight": "score", group_col: "qid"})
 
-        return pd.DataFrame(out_rows)
+        # 5. Final Sort and Rank
+        fused = fused.sort_values(["qid", "score"], ascending=[True, False])
+        fused["rank"] = fused.groupby("qid").cumcount() + 1
+
+        return fused[["qid", "docno", "score", "rank", "query"]]

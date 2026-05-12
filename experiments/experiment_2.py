@@ -25,6 +25,7 @@ from code_base.transformers import (
     DedupAndCutoff,
     MergeRewrites,
     QueryRewriteTransformer,
+    RRFTransformer
 )
 from code_base.experiment_utils import get_text_getter, get_reranker
 
@@ -45,7 +46,7 @@ def build_pipelines(n, *, index_ref, reranker, query_lookup, cutoff):
         Dict of ``{system_name: pipeline}``.
     """
     rewrite = QueryRewriteTransformer(n, dataset_name=constants.DATASET_NAME)
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % cutoff
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
     attach = AttachOriginalQuery(query_lookup)
     get_text = get_text_getter(index_ref)
 
@@ -74,12 +75,11 @@ def build_pipelines(n, *, index_ref, reranker, query_lookup, cutoff):
         ),
         "Pipeline_CombMAX": (
                 rewrite >> bm25 >> MergeRewrites() >> attach
-                >> CombMAXTransformer() >> get_text >> reranker
+                >> CombMAXTransformer() % cutoff >> get_text >> reranker
         ),
-        # "Pipeline_RRF": (
-        #         rewrite >> bm25 >> MergeRewrites() >> attach
-        #         >> RRFTransformer() >> get_text >> reranker
-        # ),
+        "Pipeline_RRF": (
+                rewrite >> bm25 >> attach >> RRFTransformer(k=60) % cutoff >> get_text >> reranker
+        ),
     }
 
 
@@ -93,7 +93,7 @@ SYSTEMS = [
     ("Pipeline_Borda", "Borda Voting"),
     ("Pipeline_BordaWeighted", "Borda Weighted"),
     ("Pipeline_CombMAX", "CombMAX"),
-    # ("Pipeline_RRF", "RRF"),
+    ("Pipeline_RRF", "RRF"),
 ]
 
 PLOT_CONFIGS = [

@@ -34,7 +34,7 @@ def build_pipelines(c, *, index_ref, reranker):
     Returns:
         Dict mapping system names to pipelines.
     """
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % c
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % c
     pipeline_t5 = (
             bm25
             >> get_text_getter(index_ref)
