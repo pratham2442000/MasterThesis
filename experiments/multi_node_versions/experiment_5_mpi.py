@@ -164,6 +164,22 @@ def generate_plots(df: pd.DataFrame, output_dir: str):
             use_log_scale=True,
         )
 
+    llm_cols = [f"{s}_LLMasJudge" for s, _ in systems if f"{s}_LLMasJudge" in df.columns]
+    llm_labels = [lbl for s, lbl in systems if f"{s}_LLMasJudge" in df.columns]
+    if llm_cols:
+        plot_metrics(
+            df, x_col="c",
+            metric_cols=llm_cols,
+            labels=llm_labels,
+            title="Experiment 5: RAG LLM-as-Judge vs Retrieval Cutoff",
+            xlabel="Retrieval Cutoff (c)",
+            ylabel="Score (1-10)",
+            filename="exp5_cutoff_vs_LLMasJudge.png",
+            output_dir=output_dir,
+            use_log_scale=True,
+        )
+
+
     # Combined EM + F1 plot
     combined_cols = em_cols + f1_cols
     combined_labels = [f"{lbl} (EM)" for lbl in em_labels] + [f"{lbl} (F1)" for lbl in f1_labels]
