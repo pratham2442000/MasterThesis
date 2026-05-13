@@ -228,9 +228,7 @@ def main():
         gold_answers = get_gold_answers(my_topics)
 
         # LLMasJudge expects qrels with columns: query_id, relevance, text
-        # EM/F1 expect: qid, gold_answer
-        # Add the extra columns so both metric families work from the same DataFrame
-        gold_answers["query_id"] = gold_answers["qid"]
+        # PyTerrier internally renames qid -> query_id, so we only add text & relevance
         gold_answers["text"] = gold_answers["gold_answer"]
         gold_answers["relevance"] = 3  # default rel threshold in LLMasJudge is 3
 
