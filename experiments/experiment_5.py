@@ -45,7 +45,7 @@ def build_retrieval_pipelines(c, *, index_ref, reranker):
     Returns:
         Dict mapping system names to retrieval pipelines.
     """
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % c
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=1) % c
     pipeline_rerank = (
             bm25
             >> get_text_getter(index_ref)
@@ -63,7 +63,7 @@ def build_rag_pipelines(c, *, index_ref, reranker, reader):
     Returns:
         Dict mapping system name to RAG pipeline.
     """
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % c
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=1) % c
     retrieval_pipe = (
             bm25
             >> get_text_getter(index_ref)
@@ -209,17 +209,17 @@ def main():
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     reranker = _get_reranker()
 
-    ret_df = retrieval_runner.run_sweep(
-        sweep_values=constants.EXPERIMENT_5_C_VALUES,
-        sweep_param="c",
-        pipeline_factory=build_retrieval_pipelines,
-        topics=topics,
-        qrels=qrels,
-        factory_kwargs={"index_ref": index_ref, "reranker": reranker},
-    )
+    # ret_df = retrieval_runner.run_sweep(
+    #     sweep_values=constants.EXPERIMENT_5_C_VALUES,
+    #     sweep_param="c",
+    #     pipeline_factory=build_retrieval_pipelines,
+    #     topics=topics,
+    #     qrels=qrels,
+    #     factory_kwargs={"index_ref": index_ref, "reranker": reranker},
+    # )
 
-    retrieval_runner.save(ret_df, results_dir, filename="experiment_5_retrieval_results")
-    retrieval_runner.plot(ret_df, results_dir, RETRIEVAL_PLOT_CONFIGS)
+    # retrieval_runner.save(ret_df, results_dir, filename="experiment_5_retrieval_results")
+    # retrieval_runner.plot(ret_df, results_dir, RETRIEVAL_PLOT_CONFIGS)
 
     # ── Stage 2: Generation Evaluation (EM / F1) ──
     print("\n" + "=" * 60)
@@ -227,6 +227,14 @@ def main():
     print("=" * 60)
 
     gold_answers = get_gold_answers(topics)
+
+    # LLMasJudge expects qrels with columns: query_id, relevance, text
+    # EM/F1 expect: qid, gold_answer
+    # Add the extra columns so both metric families work from the same DataFrame
+    gold_answers["query_id"] = gold_answers["qid"]
+    gold_answers["text"] = gold_answers["gold_answer"]
+    gold_answers["relevance"] = 3  # default rel threshold in LLMasJudge is 3
+
     reader = get_reader(live=True)
 
     rag_runner = ExperimentRunner(

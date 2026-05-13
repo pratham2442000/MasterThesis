@@ -70,7 +70,7 @@ def setup_logging(rank: int, comm: MPI.Comm):
 
 def build_rag_pipelines(c, *, index_ref, reranker, reader):
     """Full RAG pipeline for a given cutoff *c*."""
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % c
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=1) % c
     retrieval_pipe = (
             bm25
             >> get_text_getter(index_ref)
@@ -226,6 +226,14 @@ def main():
         # Distribute Work
         my_topics = np.array_split(all_topics, size)[rank]
         gold_answers = get_gold_answers(my_topics)
+
+        # LLMasJudge expects qrels with columns: query_id, relevance, text
+        # EM/F1 expect: qid, gold_answer
+        # Add the extra columns so both metric families work from the same DataFrame
+        gold_answers["query_id"] = gold_answers["qid"]
+        gold_answers["text"] = gold_answers["gold_answer"]
+        gold_answers["relevance"] = 3  # default rel threshold in LLMasJudge is 3
+
         logging.info(f"Rank {rank}: Assigned {len(my_topics)} topics.")
 
         # 2. Initialize Models & Index
