@@ -20,8 +20,8 @@ DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage", "dp
 _DATASET_CONFIGS = {
     "wiki_musique": {
         "DATA_PATH": (
-            #  "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
+              "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
+#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
         ),
         "DATA_SPLIT": "dev",
         "INDEX_PATH": "./index/wiki_musique_index/data.properties",
@@ -40,8 +40,8 @@ _DATASET_CONFIGS = {
     },
     "msmarco-passage": {
         "DATA_PATH": (
-            #  "/scratch/pjohari/MasterThesis/data/msmarco-passage"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
+              "/scratch/pjohari/MasterThesis/data/msmarco-passage"
+#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
         ),
         "DATA_SPLIT": "19",  # -> irds:msmarco-passage/trec-dl-2019/judged
         "INDEX_PATH": "./index/msmarco_passage_index/data.properties",
@@ -54,8 +54,8 @@ _DATASET_CONFIGS = {
     },
     "dpr-w100": {
         "DATA_PATH": (
-            #  "/scratch/pjohari/MasterThesis/data/dpr-w100"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100"
+              "/scratch/pjohari/MasterThesis/data/dpr-w100"
+#            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100"
         ),
         "DATA_SPLIT": "dev",  # -> irds:dpr-w100/trivia-qa/dev
         "INDEX_PATH": "./index/dpr_w100_index/data.properties",
@@ -77,8 +77,8 @@ LAFF_BASE_GRAPH_PATH = _DATASET_CONFIGS[DATASET_NAME].get("LAFF_BASE_GRAPH_PATH"
 LAFF_GRAPH_PATH = _DATASET_CONFIGS[DATASET_NAME].get("LAFF_GRAPH_PATH", "")
 
 RESULTS_PATH = (
-    #  "/scratch/pjohari/MasterThesis/results/"
-    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
+      "/scratch/pjohari/MasterThesis/results/"
+#    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
 )
 
 DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
