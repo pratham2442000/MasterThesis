@@ -12,6 +12,8 @@ import numpy as np
 import pyterrier_rag.measures as rag_measures
 from pyterrier.measures import R, nDCG
 
+from code_base.llm_judge import LLMasJudge
+
 # ==================== Dataset Selection ====================
 # Change this ONE value to switch all experiments to a different dataset.
 DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage", "dpr-w100"
@@ -82,6 +84,7 @@ RESULTS_PATH = (
 )
 
 DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
+MODELS_CACHE_DIR = "./models"  # Path to local offline models
 
 # ==================== Experiment 1 Configuration ====================
 EXPERIMENT_1_TOPIC_LIMIT = 100
@@ -121,7 +124,7 @@ EXPERIMENT_5_TOPIC_LIMIT = 100
 EXPERIMENT_5_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=int)]
 EXPERIMENT_5_RETRIEVAL_METRICS = [R @ 10, R @ 100]
 EXPERIMENT_5_EVAL_METRICS = [rag_measures.EM, rag_measures.F1,
-                             rag_measures.LLMasJudge("causal", "meta-llama/Llama-3.2-3B-Instruct")]
+                             LLMasJudge("causal", f"{MODELS_CACHE_DIR}/Llama-3.2-3B-Instruct")]
 EXPERIMENT_5_TOP_K = 5  # Passages fed to generator
 
 # ==================== Experiment 6 Configuration (RAG + Rewrites) =====
@@ -153,6 +156,7 @@ CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L6-v2"
 CROSS_ENCODER_BATCH_SIZE = 64
 QWEN_RERANKER_MODEL_NAME = "Qwen/Qwen3-Reranker-4B"
 QWEN_RERANKER_BATCH_SIZE = 32
+QWEN_RERANKER_GPU_MEMORY_UTILIZATION = 0.65
 T5_BATCH_SIZE = 16
 EXPERIMENT_BATCH_SIZE = 10
 
@@ -166,7 +170,7 @@ REQUIRE_API_PERMISSION = True
 
 # ==================== RAG Generation Configuration ====================
 OFFLINE_MODE = True
-MODELS_CACHE_DIR = "./models"  # Path to local offline models
+
 RAG_MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 # DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 

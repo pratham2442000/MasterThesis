@@ -1,5 +1,6 @@
 """
 Qwen3-Reranker for PyTerrier (vLLM backend)
+from https://github.com/Mandeep-Rathee/gar_repro
 =============================================
 A pt.Transformer wrapping ``Qwen/Qwen3-Reranker-4B`` via vLLM.
 
@@ -18,6 +19,10 @@ Usage::
 """
 
 import math
+import os
+
+# Fallback to XFORMERS to avoid flashinfer compilation issues on older CUDA versions (like 11.5)
+os.environ["VLLM_ATTENTION_BACKEND"] = os.environ.get("VLLM_ATTENTION_BACKEND", "XFORMERS")
 
 import pandas as pd
 import pyterrier as pt
@@ -25,7 +30,7 @@ import torch
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 from vllm.distributed.parallel_state import destroy_model_parallel
-from vllm.inputs.data import TokensPrompt
+from vllm.inputs.llm import TokensPrompt
 
 
 class QwenRerankerVLLM(pt.Transformer):

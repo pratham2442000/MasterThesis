@@ -26,9 +26,6 @@ from code_base.experiment_utils import get_text_getter, get_reranker, get_reader
 
 # pyterrier-rag imports
 from pyterrier_rag.prompt import Concatenator
-import pyterrier_rag.measures as rag_measures
-
-
 
 
 def _passage_formatter(record: dict) -> str:
@@ -239,7 +236,7 @@ def main():
         name="experiment_5_rag",
         results_subdir="exp5",
         topic_limit=constants.EXPERIMENT_5_TOPIC_LIMIT,
-        eval_metrics=[rag_measures.EM, rag_measures.F1, rag_measures.LLMasJudge],
+        eval_metrics=constants.EXPERIMENT_5_EVAL_METRICS,
     )
 
     rag_df = rag_runner.run_sweep(
