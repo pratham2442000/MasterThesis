@@ -131,7 +131,8 @@ EXPERIMENT_5_TOP_K = 5  # Passages fed to generator
 EXPERIMENT_6_TOPIC_LIMIT = 100
 EXPERIMENT_6_RETRIEVAL_CUTOFF = 20
 EXPERIMENT_6_N_REWRITES = [int(i) for i in np.linspace(1, 30, 10, dtype=int)]
-EXPERIMENT_6_EVAL_METRICS = [rag_measures.EM, rag_measures.F1, ]
+EXPERIMENT_6_EVAL_METRICS = [rag_measures.EM, rag_measures.F1,
+                             LLMasJudge("causal", f"{MODELS_CACHE_DIR}/Llama-3.2-3B-Instruct")]
 EXPERIMENT_6_TOP_K = 5  # Passages fed to generator
 
 # ==================== Experiment 7 Configuration (ReformIR) =====
@@ -188,7 +189,6 @@ RAG_CONCATENATOR_TOP_K = 5
 
 # TODO use mini-lm 0.6 reranker (info in sunar paper) ✅
 # TODO use qwen 0.6 (repo: https://github.com/Mandeep-Rhttps://github.com/Mandeep-Rathee/gar_reproathee/gar_repro)✅
-# TODO LLM as judge 
 # TODO ORE laff index is still not made for wiki✅
 # TODO have documents as the x axis not the number of queries (i.e find the average number of documents considered after merge(i.e before reranker) for each query rewrite) #still need to figure out how
 # fed-forward index

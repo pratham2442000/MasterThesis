@@ -48,7 +48,6 @@ from code_base.experiment_utils import get_text_getter, get_reranker
 
 # pyterrier-rag imports
 from pyterrier_rag.prompt import Concatenator
-import pyterrier_rag.measures as rag_measures
 
 
 # ---------------------------------------------------------
@@ -93,7 +92,7 @@ class PassthroughReranker(pt.Transformer):
 # ---------------------------------------------------------
 def build_retrieval_pipeline(index_ref, reranker, cutoff):
     """BM25 + T5 reranker (retrieval-only, no generation)."""
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10)
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
     bm25_retrieved = bm25 % cutoff
 
     pipeline = (
@@ -161,7 +160,7 @@ def retrieval_pipeline_factory(cutoff, *, index_ref, reranker):
     }
 
 def rag_pipeline_factory(cutoff, *, index_ref, reranker, reader):
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10) % cutoff
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25") % cutoff
     _, retrieval_pipe = build_retrieval_pipeline(
         index_ref, reranker, cutoff
     )
@@ -244,13 +243,13 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
     # --- Step 2: Setup index ---
     print(f"\n[STEP 2] Loading index from {constants.INDEX_PATH}...")
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
-    index = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+    # index = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     print(f"  Index docs: {index.getCollectionStatistics().getNumberOfDocuments()}")
     print(f"  ✓ Index loaded")
 
     # --- Step 3: BM25 retrieval ---
     print(f"\n[STEP 3] BM25 retrieval (cutoff={cutoff})...")
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10)
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
     bm25_cut = bm25 % cutoff
 
     bm25_results = bm25_cut.transform(single_topic)
@@ -426,7 +425,6 @@ def main():
         reranker = PassthroughReranker()
         print("Using PassthroughReranker (test mode)")
 
-    reader = get_reader(args.live)
 
     # ---- 3. Retrieval Sweep ----
     print("\n" + "=" * 60)
@@ -457,10 +455,7 @@ def main():
     print("TESTING FULL RAG PIPELINE (EM/F1)")
     print("=" * 60)
 
-    rag_eval_metrics = [
-        rag_measures.EM,
-        rag_measures.F1,
-    ]
+    rag_eval_metrics = constants.EXPERIMENT_5_EVAL_METRICS
 
     rag_runner = ExperimentRunner(
         name="test_rag_generation",
