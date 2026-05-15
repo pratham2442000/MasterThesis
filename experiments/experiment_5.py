@@ -230,11 +230,11 @@ def main():
     gold_answers["text"] = gold_answers["gold_answer"]
     gold_answers["relevance"] = 3  # default rel threshold in LLMasJudge is 3
 
-    reader = get_reader(live=True)
+    reader, raw_backend = get_reader(live=True)
 
-    # Share reader's backend with LLMasJudge to avoid loading model twice (OOM)
+    # Share raw backend with LLMasJudge to avoid loading model twice (OOM)
     eval_metrics = constants.get_experiment_5_eval_metrics(
-        shared_backend=reader.backend
+        shared_backend=raw_backend
     )
 
     rag_runner = ExperimentRunner(

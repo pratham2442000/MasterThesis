@@ -324,12 +324,12 @@ def main():
         # 2. Initialize Models & Index
         index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
         reranker = get_reranker(models_base_dir=LOCAL_MODEL_BASE)
-        reader = get_reader(live=True)
+        reader, raw_backend = get_reader(live=True)
         logging.info(f"Rank {rank}: Models loaded (reranker + RAG reader).")
 
-        # Share reader's backend with LLMasJudge (avoid loading model twice → OOM)
+        # Share raw backend with LLMasJudge (avoid loading model twice → OOM)
         eval_metrics = constants.get_experiment_6_eval_metrics(
-            shared_backend=reader.backend
+            shared_backend=raw_backend
         )
 
         # 3. Experiment Loop (varying n_rewrites)

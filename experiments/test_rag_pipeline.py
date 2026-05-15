@@ -118,12 +118,12 @@ def build_rag_pipeline(retrieval_pipeline, reader, top_k):
 def get_reader(live: bool):
     """
     Returns the RAG reader.
-    - live=False: DummyReader (no model)
-    - live=True: pyterrier_rag Reader with HuggingFaceBackend
+    - live=False: (DummyReader, None)
+    - live=True: (Reader, raw_backend)
     """
     if not live:
         print("Using DummyReader (test mode — no model loaded)")
-        return DummyReader()
+        return DummyReader(), None
 
     model_id = constants.RAG_MODEL_NAME
     if getattr(constants, "OFFLINE_MODE", False):
@@ -144,7 +144,7 @@ def get_reader(live: bool):
         max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
         generation_args={"temperature": 0.1, "do_sample": False},
     )
-    return Reader(backend, prompt=RAG_PROMPT)
+    return Reader(backend, prompt=RAG_PROMPT), backend
 
 
 # ---------------------------------------------------------
@@ -316,7 +316,7 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
 
     # --- Step 7: Generation ---
     print(f"\n[STEP 7] Answer generation...")
-    reader = get_reader(live)
+    reader, _ = get_reader(live)
     generated = reader.transform(concatenated)
 
     if "qanswer" in generated.columns:
@@ -452,12 +452,11 @@ def main():
 
     # ---- 4. Generation Pipeline Setup and Eval ----
     print("\n" + "=" * 60)
-    reader = get_reader(args.live)
+    reader, raw_backend = get_reader(args.live)
 
-    # Share reader's backend with LLMasJudge when live to avoid double model load
-    shared_backend = getattr(reader, 'backend', None) if args.live else None
+    # Share raw backend with LLMasJudge when live to avoid double model load
     rag_eval_metrics = constants.get_experiment_5_eval_metrics(
-        shared_backend=shared_backend
+        shared_backend=raw_backend
     )
 
     rag_runner = ExperimentRunner(

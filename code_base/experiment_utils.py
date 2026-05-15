@@ -431,7 +431,12 @@ def get_reader(live: bool):
               If True, returns a pyterrier_rag Reader with HuggingFaceBackend.
 
     Returns:
-        A PyTerrier Transformer that produces ``qanswer`` column.
+        Tuple of ``(reader, raw_backend)`` when ``live=True``.
+        ``(DummyReader(), None)`` when ``live=False``.
+
+        Note: ``reader.backend`` is a ``TextGenerator`` wrapper, NOT the raw
+        ``HuggingFaceBackend``. Use ``raw_backend`` for sharing with
+        ``LLMasJudge`` to avoid loading the model twice.
     """
     if not live:
         import pyterrier as pt
@@ -448,7 +453,7 @@ def get_reader(live: bool):
                 return result
 
         print("Using DummyReader (test mode — no model loaded)")
-        return DummyReader()
+        return DummyReader(), None
 
     model_id = constants.RAG_MODEL_NAME
     if getattr(constants, "OFFLINE_MODE", False):
@@ -470,7 +475,9 @@ def get_reader(live: bool):
         generation_args={"temperature": 0.1},
     )
     reader = Reader(backend, prompt=constants.RAG_PROMPT)
-    return reader
+    # Reader.__post_init__ wraps backend into TextGenerator.
+    # Return raw backend for sharing with LLMasJudge.
+    return reader, backend
 
 
 # ─────────────────────────────────────────────
