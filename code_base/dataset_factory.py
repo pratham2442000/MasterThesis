@@ -142,6 +142,79 @@ def get_dataset(name: str, SPLIT: str):
         raise ValueError(f"Dataset {name} not recognized.")
 
 
+def get_corpus_iter(name: str, split: str):
+    """
+    Streaming corpus iterator.
+
+    Yields:
+        {
+            "docno": str,
+            "text": str
+        }
+
+    Important:
+    - Uses generators everywhere
+    - Avoids giant in-memory list creation
+    - Much faster for indexing pipelines
+    """
+
+    # ------------------------------------------------------------------
+    # WIKI_MUSIQUE
+    # ------------------------------------------------------------------
+
+    if name == "wiki_musique":
+
+        DATA_PATH = constants.DATA_PATH
+
+        docs_df, _, _ = wiki_loader_pyt(DATA_PATH, split)
+
+        # FAST STREAMING ITERATOR
+        # avoids:
+        #   to_dict(orient="records")
+        # which is VERY memory expensive
+
+        for row in docs_df.itertuples(index=False):
+            yield {
+                "docno": row.docno,
+                "text": row.text,
+            }
+
+    # ------------------------------------------------------------------
+    # MSMARCO PASSAGE
+    # ------------------------------------------------------------------
+
+    elif name == "msmarco-passage":
+
+        dataset = pt.get_dataset(
+            f"irds:msmarco-passage/trec-dl-20{split}/judged"
+        )
+
+        # already efficient generator
+        yield from dataset.get_corpus_iter()
+
+    # ------------------------------------------------------------------
+    # DPR-W100
+    # ------------------------------------------------------------------
+
+    elif name == "dpr-w100":
+
+        dataset = pt.get_dataset(
+            f"irds:dpr-w100/trivia-qa/{split}"
+        )
+
+        yield from dataset.get_corpus_iter()
+
+    # ------------------------------------------------------------------
+    # UNKNOWN
+    # ------------------------------------------------------------------
+
+    else:
+
+        raise ValueError(
+            f"Dataset '{name}' not recognized."
+        )
+
+
 def get_gold_answers_triviaqa(topics_df):
     """Expand multi-answer TriviaQA topics into one row per (qid, gold_answer).
 

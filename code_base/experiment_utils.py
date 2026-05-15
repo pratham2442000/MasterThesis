@@ -394,7 +394,7 @@ def build_retrieval_pipeline(index_ref, reranker, cutoff):
     """
     import pyterrier as pt
 
-    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25", threads=10)
+    bm25 = pt.terrier.Retriever(index_ref, wmodel="BM25")
     bm25_retrieved = bm25 % cutoff
 
     pipeline = (
@@ -531,7 +531,7 @@ def collect_experiment_metadata(
         metadata.update({
             "topic_limit": constants.EXPERIMENT_5_TOPIC_LIMIT,
             "c_values": constants.EXPERIMENT_5_C_VALUES,
-            "eval_metrics": [str(m) for m in constants.EXPERIMENT_5_EVAL_METRICS],
+            "eval_metrics": [str(m) for m in constants.get_experiment_5_eval_metrics()],
             "top_k": constants.EXPERIMENT_5_TOP_K,
             "offline_mode": constants.OFFLINE_MODE,
             "rag_model_name": constants.RAG_MODEL_NAME,
@@ -544,7 +544,7 @@ def collect_experiment_metadata(
             "topic_limit": constants.EXPERIMENT_6_TOPIC_LIMIT,
             "retrieval_cutoff": constants.EXPERIMENT_6_RETRIEVAL_CUTOFF,
             "n_rewrites": constants.EXPERIMENT_6_N_REWRITES,
-            "eval_metrics": [str(m) for m in constants.EXPERIMENT_6_EVAL_METRICS],
+            "eval_metrics": [str(m) for m in constants.get_experiment_6_eval_metrics()],
             "top_k": constants.EXPERIMENT_6_TOP_K,
             "offline_mode": constants.OFFLINE_MODE,
             "rag_model_name": constants.RAG_MODEL_NAME,

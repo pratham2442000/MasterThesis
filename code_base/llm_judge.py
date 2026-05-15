@@ -211,15 +211,20 @@ class LLMJudgeEvaluator:
     model_id: str
     aggregation: str = "max"
     rel: int = 3
+    shared_backend: Any = None
 
     def __post_init__(self):
+        self._backend = self.shared_backend
 
-        from pyterrier_rag.backend import get_backend
-
-        self.backend = get_backend(
-            self.backend_type,
-            self.model_id,
-        )
+    @property
+    def backend(self):
+        if self._backend is None:
+            from pyterrier_rag.backend import get_backend
+            self._backend = get_backend(
+                self.backend_type,
+                self.model_id,
+            )
+        return self._backend
 
     # -----------------------------------------------------------------
 
@@ -321,9 +326,15 @@ def LLMasJudge(
         model_id: str,
         aggregation: str = "max",
         rel: int = 3,
+        shared_backend=None,
 ):
     """
     Create a robust ir_measures-compatible LLM judge metric.
+
+    Args:
+        shared_backend: An existing backend instance to reuse.
+            Avoids loading the model twice when the same model
+            is already loaded for RAG generation.
     """
 
     evaluator = LLMJudgeEvaluator(
@@ -331,6 +342,7 @@ def LLMasJudge(
         model_id=model_id,
         aggregation=aggregation,
         rel=rel,
+        shared_backend=shared_backend,
     )
 
     metric_name = (

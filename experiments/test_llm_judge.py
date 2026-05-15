@@ -18,11 +18,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from unittest.mock import MagicMock, patch
 
-# Patch get_backend before importing constants, because constants
-# instantiates EXPERIMENT_5_EVAL_METRICS = [..., LLMasJudge(...)]
-# which eagerly loads the LLM.
-with patch("pyterrier_rag.backend.get_backend", return_value=MagicMock()):
-    import constants
+# LLMasJudge is now lazy-loaded, no eager model load on import
+import constants
 
 if getattr(constants, "OFFLINE_MODE", False):
     os.environ["HF_HUB_OFFLINE"] = "1"

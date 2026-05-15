@@ -243,7 +243,7 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
     # --- Step 2: Setup index ---
     print(f"\n[STEP 2] Loading index from {constants.INDEX_PATH}...")
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
-    # index = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+    index = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     print(f"  Index docs: {index.getCollectionStatistics().getNumberOfDocuments()}")
     print(f"  ✓ Index loaded")
 
@@ -452,10 +452,13 @@ def main():
 
     # ---- 4. Generation Pipeline Setup and Eval ----
     print("\n" + "=" * 60)
-    print("TESTING FULL RAG PIPELINE (EM/F1)")
-    print("=" * 60)
+    reader = get_reader(args.live)
 
-    rag_eval_metrics = constants.EXPERIMENT_5_EVAL_METRICS
+    # Share reader's backend with LLMasJudge when live to avoid double model load
+    shared_backend = getattr(reader, 'backend', None) if args.live else None
+    rag_eval_metrics = constants.get_experiment_5_eval_metrics(
+        shared_backend=shared_backend
+    )
 
     rag_runner = ExperimentRunner(
         name="test_rag_generation",

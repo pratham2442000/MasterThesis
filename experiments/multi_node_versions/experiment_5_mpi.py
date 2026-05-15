@@ -240,6 +240,11 @@ def main():
         reader = get_reader(live=True)
         logging.info(f"Rank {rank}: Models loaded.")
 
+        # Share reader's backend with LLMasJudge (avoid loading model twice → OOM)
+        eval_metrics = constants.get_experiment_5_eval_metrics(
+            shared_backend=reader.backend
+        )
+
         # 3. Experiment Loop (varying cutoff c)
         local_results_list = []
         C_VALUES = constants.EXPERIMENT_5_C_VALUES
@@ -255,7 +260,7 @@ def main():
                     list(systems_dict.values()),
                     my_topics,
                     gold_answers,
-                    eval_metrics=constants.EXPERIMENT_5_EVAL_METRICS,
+                    eval_metrics=eval_metrics,
                     names=list(systems_dict.keys()),
                     verbose=(rank == 0),
                     perquery=True,

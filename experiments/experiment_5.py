@@ -232,11 +232,16 @@ def main():
 
     reader = get_reader(live=True)
 
+    # Share reader's backend with LLMasJudge to avoid loading model twice (OOM)
+    eval_metrics = constants.get_experiment_5_eval_metrics(
+        shared_backend=reader.backend
+    )
+
     rag_runner = ExperimentRunner(
         name="experiment_5_rag",
         results_subdir="exp5",
         topic_limit=constants.EXPERIMENT_5_TOPIC_LIMIT,
-        eval_metrics=constants.EXPERIMENT_5_EVAL_METRICS,
+        eval_metrics=eval_metrics,
     )
 
     rag_df = rag_runner.run_sweep(

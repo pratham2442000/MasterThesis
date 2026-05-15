@@ -16,7 +16,7 @@ from code_base.llm_judge import LLMasJudge
 
 # ==================== Dataset Selection ====================
 # Change this ONE value to switch all experiments to a different dataset.
-DATASET_NAME = "wiki_musique"  # Options: "wiki_musique", "msmarco-passage", "dpr-w100"
+DATASET_NAME = "dpr-w100"  # Options: "wiki_musique", "msmarco-passage", "dpr-w100"
 
 # ==================== Dataset-Specific Configuration ====================
 _DATASET_CONFIGS = {
@@ -62,6 +62,11 @@ _DATASET_CONFIGS = {
         "DATA_SPLIT": "dev",  # -> irds:dpr-w100/trivia-qa/dev
         "INDEX_PATH": "./index/dpr_w100_index/data.properties",
         "DENSE_INDEX_PATH": "./index/dpr_w100_dense_index",
+        "TCT_INDEX_PATH": "./indices/dpr_w100_tct_colbert",
+        "TASB_INDEX_PATH": "./indices/dpr_w100.tasb.flex",
+        "CORPUS_GRAPH_PATH": "./indices/dpr_w100.corpusgraph.bm25.16",
+        "LAFF_BASE_GRAPH_PATH": "./indices/dpr_w100.corpusgraph.bm25.128",
+        "LAFF_GRAPH_PATH": "./indices/dpr_w100.corpusgraph.bm25.128.laff",
         "TYPE_DISTRIBUTION": None,  # TriviaQA has no query types
     },
 }
@@ -123,17 +128,34 @@ EXPERIMENT_4_TOP_S2 = 15
 EXPERIMENT_5_TOPIC_LIMIT = 100
 EXPERIMENT_5_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=int)]
 EXPERIMENT_5_RETRIEVAL_METRICS = [R @ 10, R @ 100]
-EXPERIMENT_5_EVAL_METRICS = [rag_measures.EM, rag_measures.F1,
-                             LLMasJudge("causal", f"{MODELS_CACHE_DIR}/Llama-3.2-3B-Instruct")]
 EXPERIMENT_5_TOP_K = 5  # Passages fed to generator
+
+
+def get_experiment_5_eval_metrics(shared_backend=None):
+    """Build eval metrics for Experiment 5, optionally sharing model backend.
+
+    Args:
+        shared_backend: Existing HuggingFace backend from RAG reader.
+            Pass this to avoid loading Llama twice (OOM on single GPU).
+    """
+    return [rag_measures.EM, rag_measures.F1,
+            LLMasJudge("causal", f"{MODELS_CACHE_DIR}/Llama-3.2-3B-Instruct",
+                       shared_backend=shared_backend)]
+
 
 # ==================== Experiment 6 Configuration (RAG + Rewrites) =====
 EXPERIMENT_6_TOPIC_LIMIT = 100
 EXPERIMENT_6_RETRIEVAL_CUTOFF = 20
 EXPERIMENT_6_N_REWRITES = [int(i) for i in np.linspace(1, 30, 10, dtype=int)]
-EXPERIMENT_6_EVAL_METRICS = [rag_measures.EM, rag_measures.F1,
-                             LLMasJudge("causal", f"{MODELS_CACHE_DIR}/Llama-3.2-3B-Instruct")]
 EXPERIMENT_6_TOP_K = 5  # Passages fed to generator
+
+
+def get_experiment_6_eval_metrics(shared_backend=None):
+    """Build eval metrics for Experiment 6, optionally sharing model backend."""
+    return [rag_measures.EM, rag_measures.F1,
+            LLMasJudge("causal", f"{MODELS_CACHE_DIR}/Llama-3.2-3B-Instruct",
+                       shared_backend=shared_backend)]
+
 
 # ==================== Experiment 7 Configuration (ReformIR) =====
 EXPERIMENT_7_TOPIC_LIMIT = 100
