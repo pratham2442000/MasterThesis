@@ -116,16 +116,6 @@ def build_pipelines(
 
     pipeline_reranker = bm25 >> scorer
 
-    # pipeline_reformrank = (
-    #     bm25
-    #     >> ReformRank(
-    #         scorer=scorer,
-    #         bm25_retriever=reform_bm25,
-    #         budget=c,
-    #         batch_size=constants.T5_BATCH_SIZE,
-    #         file_name=reformulation_path,
-    #     )
-    # )
 
     pipeline_reformir = (
             bm25
@@ -221,7 +211,7 @@ def main():
     index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
     reranker = get_reranker()
 
-    # BM25 retriever used internally by ReformIR/ReformRank for reformulated queries.
+    # BM25 retriever used internally by ReformIR for reformulated queries.
     # Wrap with query sanitiser: colons in LLM rewrites crash Terrier's
     # field-based matching on indexes built without fields.
     class _SanitizeQuery(pt.Transformer):

@@ -428,3 +428,115 @@ class RRFTransformer(pt.Transformer):
         fused["rank"] = fused.groupby("qid").cumcount() + 1
 
         return fused[["qid", "docno", "score", "rank", "query"]]
+
+
+# ─────────────────────────────────────────────
+# Exp4Fuse Modified RRF (arXiv:2506.04760)
+# ─────────────────────────────────────────────
+
+class Exp4FuseTransformer(pt.Transformer):
+    """Modified Reciprocal Rank Fusion from the Exp4Fuse framework.
+
+    Fuses two retrieval routes (original query + LLM-expanded query)
+    using an adaptive weight strategy that boosts documents appearing
+    in both ranked lists.
+
+    Score formula per document:
+        score(d) = (n/10 + 1) * Σ_i  w_i / (k + r_i)
+
+    where:
+        - k = constant (default 60) to mitigate outlier rankings
+        - r_i = rank of document in list i
+        - w_i = weight for list i (default 1.0)
+        - n = number of lists the document appears in (1 or 2)
+
+    Reference: Liu & Zhang (2025), "Exp4Fuse: A Rank Fusion Framework
+    for Enhanced Sparse Retrieval using LLM-based Query Expansion",
+    ACL 2025 Findings. arXiv:2506.04760
+
+    Args:
+        k: RRF constant (default 60).
+        w1: Weight for original query route (default 1.0).
+        w2: Weight for expanded query route (default 1.0).
+    """
+
+    def __init__(self, k: int = 60, w1: float = 1.0, w2: float = 1.0):
+        self.k = k
+        self.w1 = w1
+        self.w2 = w2
+
+    def transform(self, res: pd.DataFrame) -> pd.DataFrame:
+        """Fuse sub-query ranked lists using Exp4Fuse modified RRF.
+
+        Expects results with sub-query ``qid`` values (e.g. ``"101_0"``,
+        ``"101_1"``). Route 0 (``_0``) is treated as the original query
+        route; all others are LLM-expanded routes.
+
+        Args:
+            res: Result DataFrame with sub-query ``qid`` values.
+
+        Returns:
+            Fused DataFrame with original ``qid``, ``docno``, ``score``, ``rank``.
+        """
+        if res.empty:
+            return res
+
+        res = res.copy()
+
+        # Compute ranks within each sub-query
+        res = res.sort_values(["qid", "score"], ascending=[True, False])
+        res["_rank"] = res.groupby("qid").cumcount() + 1
+
+        # Parse original qid and route index
+        res["_orig_qid"] = res["qid"].astype(str).apply(lambda x: x.rsplit("_", 1)[0])
+        res["_route"] = res["qid"].astype(str).apply(lambda x: int(x.rsplit("_", 1)[1]))
+
+        # Determine group col
+        group_col = "orig_qid" if "orig_qid" in res.columns else "_orig_qid"
+
+        out_rows: list[dict] = []
+
+        for orig_qid, group in res.groupby(group_col):
+            doc_scores: Dict[str, float] = defaultdict(float)
+            doc_appearances: Dict[str, int] = defaultdict(int)
+
+            for _, row in group.iterrows():
+                docno = row["docno"]
+                rank = row["_rank"]
+                route = row["_route"]
+
+                # w1 for original route (index 0), w2 for expanded routes
+                w = self.w1 if route == 0 else self.w2
+                doc_scores[docno] += w / (self.k + rank)
+                doc_appearances[docno] += 1
+
+            # Count unique lists each doc appeared in (cap at num routes)
+            n_routes = group["_route"].nunique()
+            for docno in doc_scores:
+                # n = number of distinct routes doc appears in
+                n = min(doc_appearances[docno], n_routes)
+                # Exp4Fuse adaptive multiplier: (n/10 + 1)
+                doc_scores[docno] *= (n / 10.0 + 1.0)
+
+            # Sort and emit
+            sorted_docs = sorted(doc_scores.items(), key=lambda x: x[1], reverse=True)
+            for rank, (docno, score) in enumerate(sorted_docs, 1):
+                out_rows.append({
+                    "qid": orig_qid,
+                    "docno": docno,
+                    "score": score,
+                    "rank": rank,
+                })
+
+        result = pd.DataFrame(out_rows)
+
+        # Re-attach query text if available
+        if "query" in res.columns and not result.empty:
+            query_map = (
+                res[[group_col, "query"]]
+                .drop_duplicates(subset=[group_col])
+                .rename(columns={group_col: "qid"})
+            )
+            result = result.merge(query_map, on="qid", how="left")
+
+        return result

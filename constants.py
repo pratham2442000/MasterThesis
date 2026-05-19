@@ -16,7 +16,7 @@ from code_base.llm_judge import LLMasJudge
 
 # ==================== Dataset Selection ====================
 # Change this ONE value to switch all experiments to a different dataset.
-DATASET_NAME = "dpr-w100"  # Options: "wiki_musique", "msmarco-passage", "dpr-w100"
+DATASET_NAME = "msmarco-passage"  # Options: "wiki_musique", "msmarco-passage", "dpr-w100"
 
 # ==================== Dataset-Specific Configuration ====================
 _DATASET_CONFIGS = {
@@ -48,9 +48,10 @@ _DATASET_CONFIGS = {
         "DATA_SPLIT": "19",  # -> irds:msmarco-passage/trec-dl-2019/judged
         "INDEX_PATH": "./index/msmarco_passage_index/data.properties",
         "DENSE_INDEX_PATH": "./index/msmarco_passage_dense_index",
-        "TASB_INDEX_PATH": "macavaney/msmarco-passage-v2-dedup.tcthnp.flex",
+        "TCT_INDEX_PATH": "./indices/msmarco_passage_tct_colbert",
+        "TASB_INDEX_PATH": "./indices/msmarco_passage_dedup.tasb.flex",
         "CORPUS_GRAPH_PATH": "macavaney/msmarco-passage.corpusgraph.bm25.16",
-        "LAFF_BASE_GRAPH_PATH": "macavaney/msmarco-passage.corpusgraph.bm25.128.laff",
+        "LAFF_BASE_GRAPH_PATH": "macavaney/msmarco-passage.corpusgraph.bm25.128",
         "LAFF_GRAPH_PATH": "macavaney/msmarco-passage.corpusgraph.bm25.128.laff",
         "TYPE_DISTRIBUTION": None,  # MSMARCO has no query types
     },
@@ -88,13 +89,16 @@ RESULTS_PATH = (
 #    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
 )
 
-DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
+# TCT-ColBERT v2-HNP — same model used by build_all.py to build TCT_INDEX_PATH
+DENSE_MODEL_NAME = "castorini/tct_colbert-v2-hnp-msmarco"
+# Point DENSE_INDEX_PATH at the same index built by build_all.py
+DENSE_INDEX_PATH = TCT_INDEX_PATH
 MODELS_CACHE_DIR = "./models"  # Path to local offline models
 
 # ==================== Experiment 1 Configuration ====================
 EXPERIMENT_1_TOPIC_LIMIT = 100
 EXPERIMENT_1_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=int)]
-EXPERIMENT_1_EVAL_METRICS = [R @ 10, nDCG @ 10]
+EXPERIMENT_1_EVAL_METRICS = [R @ 10, R @ 50, nDCG @ 10]
 
 # ==================== Experiment 2 Configuration ====================
 EXPERIMENT_2_TOPIC_LIMIT = 100
@@ -115,7 +119,7 @@ EXPERIMENT_3_EVAL_METRICS = [R @ 10, nDCG @ 10]
 # ==================== Experiment 4 Configuration (ORE) ==============
 EXPERIMENT_4_TOPIC_LIMIT = 100
 EXPERIMENT_4_C_VALUES = [int(i) for i in np.geomspace(10, 500, num=10, dtype=int)]
-EXPERIMENT_4_EVAL_METRICS = [R @ 10, nDCG @ 10]
+EXPERIMENT_4_EVAL_METRICS = [R @ 10, R @ 50, nDCG @ 10]
 EXPERIMENT_4_FLEX_INDEX_PATH = TASB_INDEX_PATH  # derived from dataset
 EXPERIMENT_4_CORPUS_GRAPH = CORPUS_GRAPH_PATH  # derived from dataset
 EXPERIMENT_4_LAFF_GRAPH = LAFF_BASE_GRAPH_PATH  # derived from dataset
@@ -123,6 +127,9 @@ EXPERIMENT_4_LAFF_K = 16
 EXPERIMENT_4_CROSS_ENC_BUDGET = 7
 EXPERIMENT_4_TOP_S1 = 25
 EXPERIMENT_4_TOP_S2 = 15
+EXPERIMENT_4_TCT_INDEX_PATH = TCT_INDEX_PATH
+EXPERIMENT_4_DENSE_MODEL_NAME = DENSE_MODEL_NAME
+EXPERIMENT_4_HYBRID_TOP_S = 10
 
 # ==================== Experiment 5 Configuration (Full RAG) =====
 EXPERIMENT_5_TOPIC_LIMIT = 100
@@ -160,7 +167,7 @@ def get_experiment_6_eval_metrics(shared_backend=None):
 # ==================== Experiment 7 Configuration (ReformIR) =====
 EXPERIMENT_7_TOPIC_LIMIT = 100
 EXPERIMENT_7_C_VALUES = [int(i) for i in np.geomspace(10, 1000, num=10, dtype=int)]
-EXPERIMENT_7_EVAL_METRICS = [R @ 10, nDCG @ 10]
+EXPERIMENT_7_EVAL_METRICS = [R @ 10, R @ 50, nDCG @ 10]
 EXPERIMENT_7_CROSS_ENC_BUDGET = 7
 EXPERIMENT_7_TOP_S = 15
 EXPERIMENT_7_N_REWRITES = 5  # number of LLM rewrites used by ReformIR
@@ -209,8 +216,5 @@ RAG_PROMPT = (
 RAG_MODEL_MAX_NEW_TOKENS = 512
 RAG_CONCATENATOR_TOP_K = 5
 
-# TODO use mini-lm 0.6 reranker (info in sunar paper) ✅
-# TODO use qwen 0.6 (repo: https://github.com/Mandeep-Rhttps://github.com/Mandeep-Rathee/gar_reproathee/gar_repro)✅
-# TODO ORE laff index is still not made for wiki✅
 # TODO have documents as the x axis not the number of queries (i.e find the average number of documents considered after merge(i.e before reranker) for each query rewrite) #still need to figure out how
 # fed-forward index

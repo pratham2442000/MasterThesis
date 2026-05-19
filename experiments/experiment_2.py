@@ -23,6 +23,7 @@ from code_base.transformers import (
     BordaVotingTransformerV2,
     CombMAXTransformer,
     DedupAndCutoff,
+    Exp4FuseTransformer,
     MergeRewrites,
     QueryRewriteTransformer,
     RRFTransformer
@@ -80,6 +81,9 @@ def build_pipelines(n, *, index_ref, reranker, query_lookup, cutoff):
         "Pipeline_RRF": (
                 rewrite >> bm25 >> attach >> RRFTransformer(k=60) % cutoff >> get_text >> reranker
         ),
+        "Pipeline_Exp4Fuse": (
+                rewrite >> bm25 >> attach >> Exp4FuseTransformer(k=60) % cutoff >> get_text >> reranker
+        ),
     }
 
 
@@ -94,6 +98,7 @@ SYSTEMS = [
     ("Pipeline_BordaWeighted", "Borda Weighted"),
     ("Pipeline_CombMAX", "CombMAX"),
     ("Pipeline_RRF", "RRF"),
+    ("Pipeline_Exp4Fuse", "Exp4Fuse"),
 ]
 
 PLOT_CONFIGS = [

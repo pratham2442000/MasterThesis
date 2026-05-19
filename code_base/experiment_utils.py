@@ -572,6 +572,7 @@ def save_experiment_results(
         output_dir: Optional[str] = None,
         filename: Optional[str] = None,
         include_timestamp: bool = True,
+        execution_time: Optional[float] = None,
 ) -> str:
     """Save experiment results to CSV with a companion metadata JSON.
 
@@ -590,6 +591,9 @@ def save_experiment_results(
         output_dir = constants.DATA_PATH
     if metadata is None:
         metadata = collect_experiment_metadata(experiment_name)
+
+    if execution_time is not None:
+        metadata["execution_time"] = str(execution_time)
 
     # Coerce to DataFrame
     if not isinstance(results_df, pd.DataFrame):

@@ -73,6 +73,7 @@ class ExperimentRunner:
         self.topic_limit = topic_limit
         self.eval_metrics = list(eval_metrics)
         self.extra_metrics_fn = extra_metrics_fn
+        self._start_time = datetime.now()
 
     # ── Setup ────────────────────────────────────────────────
 
@@ -229,11 +230,15 @@ class ExperimentRunner:
         print("\nFinal Results DataFrame:")
         print(results_df)
 
+        self._end_time = datetime.now()
+        execution_time = self._end_time - self._start_time
+
         return save_experiment_results(
             results_df,
             experiment_name=self.name,
             output_dir=output_dir,
             filename=filename,
+            execution_time=execution_time,
         )
 
     # ── Plotting ─────────────────────────────────────────────
