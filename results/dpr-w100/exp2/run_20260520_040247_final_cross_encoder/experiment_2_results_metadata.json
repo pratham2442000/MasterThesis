@@ -1,13 +1,13 @@
 {
   "experiment_name": "experiment_2",
-  "timestamp": "2026-05-07T00:17:24.253909",
-  "data_path": "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100",
+  "timestamp": "2026-05-20T12:50:54.360760",
+  "data_path": "/content/drive/MyDrive/MasterThesis/data/dpr-w100",
   "data_split": "dev",
   "dataset_name": "dpr-w100",
   "index_path": "./index/dpr_w100_index/data.properties",
   "reranker_type": "cross_encoder",
   "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L6-v2",
-  "topic_limit": 40,
+  "topic_limit": 100,
   "n_rewrites": [
     1,
     4,
@@ -30,5 +30,6 @@
   ],
   "llm_rewrites_per_query": 30,
   "llm_temperature": 0.7,
-  "llm_model_name": "gpt-4o-mini"
+  "llm_model_name": "gpt-4o-mini",
+  "execution_time": "8:48:06.837817"
 }

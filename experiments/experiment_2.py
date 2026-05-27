@@ -12,6 +12,7 @@ import sys
 
 import numpy as np
 import pyterrier as pt
+import torch
 from pyterrier.measures import R
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -89,67 +90,79 @@ def build_pipelines(n, *, index_ref, reranker, query_lookup, cutoff):
 
 # ─── Plot Configuration ──────────────────────────────────
 
-SYSTEMS = [
-    ("BM25", "BM25 Baseline"),
-    ("BM25_MonoT5", f"BM25 + {constants.RERANKER_NAME}"),
-    # ("Pipeline_Dedup", "Dedup Method"),
-    ("Pipeline_DedupCutoff", "Dedup Cutoff Method"),
-    ("Pipeline_Borda", "Borda Voting"),
-    ("Pipeline_BordaWeighted", "Borda Weighted"),
-    ("Pipeline_CombMAX", "CombMAX"),
-    ("Pipeline_RRF", "RRF"),
-    ("Pipeline_Exp4Fuse", "Exp4Fuse"),
-]
+def _system_label(key):
+    return {
+        "BM25": "BM25 Baseline",
+        "BM25_MonoT5": f"BM25 + {constants.RERANKER_NAME}",
+        "Pipeline_DedupCutoff": "Dedup Cutoff Method",
+        "Pipeline_Borda": "Borda Voting",
+        "Pipeline_BordaWeighted": "Borda Weighted",
+        "Pipeline_CombMAX": "CombMAX",
+        "Pipeline_RRF": "RRF",
+        "Pipeline_Exp4Fuse": "Exp4Fuse",
+    }.get(key, key)
 
-PLOT_CONFIGS = [
-    {
-        "type": "metrics",
-        "x_col": "n",
-        "metric_cols": [f"{s}_R@50" for s, _ in SYSTEMS],
-        "labels": [lbl for _, lbl in SYSTEMS],
-        "title": "Experiment 2: Fusion Methods Comparison (R@50)",
-        "xlabel": "Number of Rewrites",
-        "filename": "n_rewrites_vs_R_at_50_comparison.png",
-        "use_log_scale": False,
-    },
-    {
-        "type": "metrics",
-        "x_col": "n",
-        "metric_cols": [f"{s}_R@10" for s, _ in SYSTEMS],
-        "labels": [lbl for _, lbl in SYSTEMS],
-        "title": "Experiment 2: Fusion Methods Comparison (R@10)",
-        "xlabel": "Number of Rewrites",
-        "filename": "n_rewrites_vs_R_at_10_comparison.png",
-        "use_log_scale": False,
-    },
-    {
-        "type": "metrics",
-        "x_col": "n",
-        "metric_cols": [f"{s}_nDCG@10" for s, _ in SYSTEMS],
-        "labels": [lbl for _, lbl in SYSTEMS],
-        "title": "Experiment 2: Fusion Methods Comparison (nDCG@10)",
-        "xlabel": "Number of Rewrites",
-        "filename": "n_rewrites_vs_nDCG_comparison.png",
-        "use_log_scale": False,
-    },
-    {
-        "type": "regression",
-        "x_col": "n",
-        "metric_cols": [f"{s}_R@50" for s, _ in SYSTEMS],
-        "labels": [lbl for _, lbl in SYSTEMS],
-        "title": "Experiment 2: R@50 vs Rewrites (All Methods)",
-        "xlabel": "Number of Rewrites",
-        "ylabel": "R@50",
-        "filename": "n_rewrites_vs_R_regression_all_methods.png",
-        "use_log_scale": False,
-    },
-]
+
+def _build_plot_configs(system_keys):
+    """Build PLOT_CONFIGS list from active system keys."""
+    systems = [(k, _system_label(k)) for k in system_keys]
+
+    return [
+        {
+            "type": "metrics",
+            "x_col": "n",
+            "metric_cols": [f"{s}_R@50" for s, _ in systems],
+            "labels": [lbl for _, lbl in systems],
+            "title": "Experiment 2: Fusion Methods Comparison (R@50)",
+            "xlabel": "Number of Rewrites",
+            "filename": "n_rewrites_vs_R_at_50_comparison.png",
+            "use_log_scale": False,
+        },
+        {
+            "type": "metrics",
+            "x_col": "n",
+            "metric_cols": [f"{s}_R@10" for s, _ in systems],
+            "labels": [lbl for _, lbl in systems],
+            "title": "Experiment 2: Fusion Methods Comparison (R@10)",
+            "xlabel": "Number of Rewrites",
+            "filename": "n_rewrites_vs_R_at_10_comparison.png",
+            "use_log_scale": False,
+        },
+        {
+            "type": "metrics",
+            "x_col": "n",
+            "metric_cols": [f"{s}_nDCG@10" for s, _ in systems],
+            "labels": [lbl for _, lbl in systems],
+            "title": "Experiment 2: Fusion Methods Comparison (nDCG@10)",
+            "xlabel": "Number of Rewrites",
+            "filename": "n_rewrites_vs_nDCG_comparison.png",
+            "use_log_scale": False,
+        },
+        {
+            "type": "regression",
+            "x_col": "n",
+            "metric_cols": [f"{s}_R@50" for s, _ in systems],
+            "labels": [lbl for _, lbl in systems],
+            "title": "Experiment 2: R@50 vs Rewrites (All Methods)",
+            "xlabel": "Number of Rewrites",
+            "ylabel": "R@50",
+            "filename": "n_rewrites_vs_R_regression_all_methods.png",
+            "use_log_scale": False,
+        },
+    ]
 
 
 # ─── Main ─────────────────────────────────────────────────
 
 def main():
     """Run Experiment 2."""
+
+    os.environ["TOKENIZERS_PARALLELISM"] = "true"
+
+    torch.backends.cudnn.benchmark = True
+    torch.set_float32_matmul_precision("high")
+    torch.set_num_threads(os.cpu_count())
+
     cutoff = constants.EXPERIMENT_2_RETRIEVAL_CUTOFF
 
     runner = ExperimentRunner(
@@ -182,7 +195,12 @@ def main():
     )
 
     runner.save(results_df, results_dir)
-    runner.plot(results_df, results_dir, PLOT_CONFIGS)
+
+    # Determine which systems were actually run
+    system_keys = [col.replace("_R@10", "") for col in results_df.columns
+                   if col.endswith("_R@10")]
+    plot_configs = _build_plot_configs(system_keys)
+    runner.plot(results_df, results_dir, plot_configs)
 
 
 if __name__ == "__main__":

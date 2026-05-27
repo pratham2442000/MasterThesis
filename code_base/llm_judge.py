@@ -2,11 +2,13 @@
 Robust LLM-as-Judge implementation for PyTerrier RAG
 ===================================================
 
+Uses LangChain with a local HuggingFace model (Llama) for offline
+evaluation. No external API calls required.
 
 Expected input columns
 ----------------------
 
-Run dataframe (`res`)
+Run dataframe (``res``)
 ~~~~~~~~~~~~~~~~~~~~~
 Required:
     - qanswer
@@ -15,7 +17,7 @@ Optional:
     - query
     - qid / query_id
 
-Qrels dataframe (`qrels`)
+Qrels dataframe (``qrels``)
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 Required:
     - text
@@ -31,7 +33,6 @@ Example
     from code_base.llm_judge import LLMasJudge
 
     judge = LLMasJudge(
-        backend_type="causal",
         model_id="./models/Llama-3.2-3B-Instruct",
         aggregation="max",
     )
@@ -48,8 +49,8 @@ from __future__ import annotations
 
 import re
 import warnings
-from dataclasses import dataclass
-from typing import Any, Iterable, List
+from dataclasses import dataclass, field
+from typing import Any
 
 import ir_measures
 
@@ -59,36 +60,25 @@ import ir_measures
 
 SYSTEM_MESSAGE = "You are a precise and rigorous evaluator."
 
+# Max tokens for judge generation
+JUDGE_MAX_NEW_TOKENS = 128
+
 JUDGE_PROMPT = """
-You are an expert evaluator assessing a question-answering system.
+Compare the system answer to the gold reference.
+Query: {query}
+Gold answer: {reference}
+System answer: {prediction}
+Rate 1-10 (1=wrong, 10=correct).
+IMPORTANT: Reply with ONLY a single integer. Do not add any text, notes, or explanations.
+Rating:""".strip()
 
-[User Query]
-{query}
-
-[Gold Reference Answer]
-{reference}
-
-[System Generated Answer]
-{prediction}
-
-Evaluate whether the generated answer is factually accurate and semantically
-consistent with the gold reference answer.
-
-Scoring rubric:
-1-2   : Completely incorrect
-3-4   : Mostly incorrect
-5-6   : Partially correct
-7-8   : Mostly correct
-9-10  : Fully correct
-
-Provide:
-1. A short explanation
-2. A rating in EXACTLY this format:
-
-Rating: [[N]]
-
-Where N is an integer from 1 to 10.
-""".strip()
+JUDGE_PROMPT_NO_REF = """
+Assess if the system answer is reasonable.
+Query: {query}
+System answer: {prediction}
+Rate 1-10 (1=nonsensical, 10=excellent).
+IMPORTANT: Reply with ONLY a single integer. Do not add any text, notes, or explanations.
+Rating:""".strip()
 
 
 # -------------------------------------------------------------------------
@@ -139,9 +129,12 @@ def _parse_rating(text: str) -> int:
 
     patterns = [
         r"\[\[(\d+)\]\]",  # [[7]]
-        r"rating\s*:\s*(\d+)",  # Rating: 7
+        r"rating\s*:\s*\[*(\d+)\]*",  # Rating: 7 or Rating: [7]
         r"score\s*:\s*(\d+)",  # Score: 7
-        r"\b(10|[1-9])\b",  # standalone integer
+        r"\*\*rating\*\*\s*:\s*(\d+)",  # **Rating**: 7
+        r"rate[d]?\s*(\d+)\s*(?:out)?\s*(?:of)?\s*10",  # rated 7 out of 10
+        r"(\d+)\s*/\s*10",  # 7/10
+        r"^\s*(\d+)\s*$",  # Just a number
     ]
 
     for pattern in patterns:
@@ -153,51 +146,95 @@ def _parse_rating(text: str) -> int:
             except Exception:
                 pass
 
+    # Last resort: first standalone integer in entire text
+    m = re.search(r"\b(10|[1-9])\b", text)
+    if m:
+        try:
+            return max(1, min(10, int(m.group(1))))
+        except Exception:
+            pass
+
     return 0
 
 
-def _normalize_outputs(outputs: Any) -> List[str]:
+# -------------------------------------------------------------------------
+# LangChain Model Builder
+# -------------------------------------------------------------------------
+
+
+def _build_langchain_model(model_id: str, shared_backend: Any = None):
     """
-    Normalize all backend output formats into List[str].
+    Build a LangChain-compatible LLM from a local HuggingFace model.
 
-    Handles:
-        - str
-        - BackendOutput
-        - List[str]
-        - List[BackendOutput]
-        - generators
-        - nested structures
+    Auto-detects shared_backend type:
+    - HuggingFacePipeline (langchain) → reuse directly
+    - pyterrier_rag HuggingFaceBackend → extract model/tokenizer, wrap
+    - transformers Pipeline → wrap in HuggingFacePipeline
+    - None → load fresh from model_id
+
+    Returns a LangChain LLM (HuggingFacePipeline).
     """
+    from langchain_huggingface import HuggingFacePipeline
 
-    if outputs is None:
-        return []
+    # Case 1: Already a LangChain HuggingFacePipeline
+    if shared_backend is not None and isinstance(shared_backend, HuggingFacePipeline):
+        print("LLM Judge: reusing shared LangChain HuggingFacePipeline")
+        return shared_backend
 
-    if isinstance(outputs, str):
-        return [outputs]
+    # Case 2: Raw transformers pipeline
+    if shared_backend is not None and hasattr(shared_backend, "task"):
+        # Looks like a transformers.Pipeline object
+        print("LLM Judge: wrapping shared transformers pipeline")
+        return HuggingFacePipeline(pipeline=shared_backend)
 
-    if hasattr(outputs, "text"):
-        return [str(outputs.text)]
+    # Case 3: pyterrier_rag HuggingFaceBackend — extract model + tokenizer
+    if shared_backend is not None:
+        model_obj = None
+        tokenizer_obj = None
 
-    if not isinstance(outputs, Iterable):
-        return [str(outputs)]
+        # Try common attribute names on pyterrier_rag backends
+        for attr in ("model", "_model", "llm"):
+            if hasattr(shared_backend, attr):
+                model_obj = getattr(shared_backend, attr)
+                break
 
-    normalized = []
+        for attr in ("tokenizer", "_tokenizer", "tok"):
+            if hasattr(shared_backend, attr):
+                tokenizer_obj = getattr(shared_backend, attr)
+                break
 
-    for item in outputs:
+        if model_obj is not None and tokenizer_obj is not None:
+            import transformers
+            print("LLM Judge: extracting model/tokenizer from shared backend")
+            pipe = transformers.pipeline(
+                "text-generation",
+                model=model_obj,
+                tokenizer=tokenizer_obj,
+                max_new_tokens=JUDGE_MAX_NEW_TOKENS,
+                do_sample=False,
+            )
+            return HuggingFacePipeline(pipeline=pipe)
 
-        if item is None:
-            continue
+        # If extraction failed, warn and fall through to fresh load
+        warnings.warn(
+            f"Could not extract model from shared_backend "
+            f"(type={type(shared_backend).__name__}). "
+            f"Loading fresh model from {model_id}."
+        )
 
-        if isinstance(item, str):
-            normalized.append(item)
-
-        elif hasattr(item, "text"):
-            normalized.append(str(item.text))
-
-        else:
-            normalized.append(str(item))
-
-    return normalized
+    # Case 4: Load fresh model
+    import transformers
+    print(f"LLM Judge: loading model from {model_id}")
+    pipe = transformers.pipeline(
+        "text-generation",
+        model=model_id,
+        tokenizer=model_id,
+        max_new_tokens=JUDGE_MAX_NEW_TOKENS,
+        do_sample=False,
+        device_map="auto",
+        torch_dtype="auto",
+    )
+    return HuggingFacePipeline(pipeline=pipe)
 
 
 # -------------------------------------------------------------------------
@@ -207,88 +244,81 @@ def _normalize_outputs(outputs: Any) -> List[str]:
 
 @dataclass
 class LLMJudgeEvaluator:
-    backend_type: str
     model_id: str
     aggregation: str = "max"
     rel: int = 3
     shared_backend: Any = None
-
-    def __post_init__(self):
-        self._backend = self.shared_backend
+    _llm: Any = field(default=None, init=False, repr=False)
 
     @property
-    def backend(self):
-        if self._backend is None:
-            from pyterrier_rag.backend import get_backend
-            self._backend = get_backend(
-                self.backend_type,
+    def llm(self):
+        """Lazy-load LangChain LLM on first use."""
+        if self._llm is None:
+            self._llm = _build_langchain_model(
                 self.model_id,
+                shared_backend=self.shared_backend,
             )
-        return self._backend
+        return self._llm
 
     # -----------------------------------------------------------------
 
-    def _generate(self, prompts: List[str]) -> List[str]:
+    def _generate(self, prompt_text: str) -> str:
         """
-        Handle both batched and non-batched backends.
+        Generate text from a single prompt using LangChain.
+        Returns raw string output.
         """
+        from langchain_core.prompts import PromptTemplate
+        from langchain_core.output_parsers import StrOutputParser
+
+        template = PromptTemplate.from_template("{prompt}")
+        chain = template | self.llm | StrOutputParser()
 
         try:
-            outputs = self.backend.generate(prompts)
-            normalized = _normalize_outputs(outputs)
-
-            if len(normalized) == len(prompts):
-                return normalized
-
-        except Exception:
-            pass
-
-        # Fallback: sequential generation
-        outputs = []
-
-        for prompt in prompts:
-
-            out = self.backend.generate(prompt)
-            normalized = _normalize_outputs(out)
-
-            if normalized:
-                outputs.append(normalized[0])
-            else:
-                outputs.append("")
-
-        return outputs
+            output = chain.invoke({"prompt": prompt_text})
+            return str(output).strip()
+        except Exception as e:
+            warnings.warn(f"LLM generation failed: {e}")
+            return ""
 
     # -----------------------------------------------------------------
 
-    def score(self, query, prediction, references):
+    def score(self, query, prediction, references=None):
 
         if not references:
-            raise ValueError("No reference answers available")
+            # No reference text — use reference-free prompt
+            prompt = JUDGE_PROMPT_NO_REF.format(
+                query=query,
+                prediction=prediction,
+            )
+            raw_output = self._generate(prompt)
+            score_val = _parse_rating(raw_output)
 
-        prompts = [
-            JUDGE_PROMPT.format(
+            if score_val <= 0:
+                warnings.warn(
+                    f"Could not parse rating from output:\n{raw_output}"
+                )
+                return 0.0
+
+            return float(score_val)
+
+        scores = []
+
+        for reference in references:
+            prompt = JUDGE_PROMPT.format(
                 query=query,
                 reference=reference,
                 prediction=prediction,
             )
-            for reference in references
-        ]
+            raw_output = self._generate(prompt)
+            score_val = _parse_rating(raw_output)
 
-        raw_outputs = self._generate(prompts)
-
-        scores = []
-
-        for output in raw_outputs:
-
-            score = _parse_rating(output)
-
-            if score <= 0:
+            if score_val <= 0:
                 warnings.warn(
-                    f"Could not parse rating from output:\n{output}"
+                    f"Could not parse rating from output:\n{raw_output}"
                 )
                 continue
 
-            scores.append(score)
+            scores.append(score_val)
 
         if not scores:
             return 0.0
@@ -322,23 +352,30 @@ class LLMJudgeEvaluator:
 
 
 def LLMasJudge(
-        backend_type: str,
         model_id: str,
         aggregation: str = "max",
         rel: int = 3,
         shared_backend=None,
 ):
     """
-    Create a robust ir_measures-compatible LLM judge metric.
+    Create an ir_measures-compatible LLM judge metric.
+
+    Uses LangChain with a local HuggingFace model (e.g. Llama)
+    for fully offline evaluation.
 
     Args:
+        model_id: Path to local HuggingFace model directory
+            (e.g. "./models/Llama-3.2-3B-Instruct").
+        aggregation: How to aggregate scores across references.
+            One of "max", "min", "avg", "sum".
+        rel: Minimum relevance threshold for filtering qrels.
         shared_backend: An existing backend instance to reuse.
-            Avoids loading the model twice when the same model
-            is already loaded for RAG generation.
+            Accepts: LangChain HuggingFacePipeline, transformers
+            Pipeline, or pyterrier_rag HuggingFaceBackend.
+            Avoids loading the model twice (OOM on single GPU).
     """
 
     evaluator = LLMJudgeEvaluator(
-        backend_type=backend_type,
         model_id=model_id,
         aggregation=aggregation,
         rel=rel,
@@ -347,7 +384,6 @@ def LLMasJudge(
 
     metric_name = (
         f"LLMasJudge("
-        f"{backend_type},"
         f"{model_id},"
         f"agg={aggregation}"
         f")"
@@ -365,7 +401,7 @@ def LLMasJudge(
 
         _validate_columns(
             qrels,
-            required=["text", "relevance"],
+            required=["relevance"],
             df_name="qrels",
         )
 
@@ -385,14 +421,16 @@ def LLMasJudge(
 
         query = _safe_query(res)
 
-        references = [
-            str(x)
-            for x in qrels_filtered["text"].tolist()
-            if x is not None
-        ]
-
-        if not references:
-            return 0.0
+        # text column optional
+        references = None
+        if "text" in qrels_filtered.columns:
+            references = [
+                str(x)
+                for x in qrels_filtered["text"].tolist()
+                if x is not None and str(x).strip()
+            ]
+            if not references:
+                references = None
 
         return evaluator.score(
             query=query,
@@ -407,7 +445,7 @@ def LLMasJudge(
         name=metric_name,
         support_cutoff=False,
         run_inputs=["qanswer"],
-        qrel_inputs=["text", "relevance"],
+        qrel_inputs=["relevance"],
     )
 
 
@@ -415,4 +453,5 @@ __all__ = [
     "LLMasJudge",
     "LLMJudgeEvaluator",
     "JUDGE_PROMPT",
+    "JUDGE_PROMPT_NO_REF",
 ]

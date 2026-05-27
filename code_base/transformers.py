@@ -117,7 +117,9 @@ class MergeRewrites(pt.Transformer):
             Same DataFrame with ``qid`` reset to the base ID.
         """
         res = res.copy()
-        res["qid"] = res["qid"].astype(str).apply(lambda x: x.split("_")[0])
+        # Use rsplit from the right so qids containing underscores
+        # (e.g. "tc_123" → "tc_123_0") are correctly stripped.
+        res["qid"] = res["qid"].astype(str).apply(lambda x: x.rsplit("_", 1)[0])
         return res
 
 
@@ -329,7 +331,7 @@ class BordaVotingTransformerV2(pt.Transformer):
             return res
 
         res = res.copy()
-        res["orig_qid"] = res["qid"].astype(str).apply(lambda x: x.split("_")[0])
+        res["orig_qid"] = res["qid"].astype(str).apply(lambda x: x.rsplit("_", 1)[0])
 
         out_rows: list[dict] = []
 

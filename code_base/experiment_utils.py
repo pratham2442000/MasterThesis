@@ -114,12 +114,15 @@ def get_reranker(models_base_dir=None):
                     tok_model = t5_tok_path
 
         print(f"Using MonoT5ReRanker ({model_id})")
-        return MonoT5ReRanker(
-            model=model_id,
-            tok_model=tok_model,
-            verbose=False,
-            batch_size=constants.T5_BATCH_SIZE,
-        )
+        kwargs = {
+            "model": model_id,
+            "verbose": False,
+            "batch_size": constants.T5_BATCH_SIZE,
+        }
+        if tok_model is not None:
+            kwargs["tok_model"] = tok_model
+
+        return MonoT5ReRanker(**kwargs)
 
 # ─────────────────────────────────────────────
 # Plotting
@@ -546,6 +549,18 @@ def collect_experiment_metadata(
             "reranker_model_name": constants.RERANKER_MODEL_NAME,
         })
 
+    elif experiment_name == "experiment_4":
+        metadata.update({
+            "topic_limit": constants.EXPERIMENT_4_TOPIC_LIMIT,
+            "c_values": constants.EXPERIMENT_4_C_VALUES,
+            "eval_metrics": [str(m) for m in constants.EXPERIMENT_4_EVAL_METRICS],
+            "cross_enc_budget": constants.EXPERIMENT_4_CROSS_ENC_BUDGET,
+            "top_s1": constants.EXPERIMENT_4_TOP_S1,
+            "top_s2": constants.EXPERIMENT_4_TOP_S2,
+            "laff_k": constants.EXPERIMENT_4_LAFF_K,
+            "flex_index_path": constants.EXPERIMENT_4_FLEX_INDEX_PATH,
+        })
+
     elif experiment_name == "experiment_6":
         metadata.update({
             "topic_limit": constants.EXPERIMENT_6_TOPIC_LIMIT,
@@ -557,6 +572,16 @@ def collect_experiment_metadata(
             "rag_model_name": constants.RAG_MODEL_NAME,
             "reranker_type": constants.RERANKER_TYPE,
             "reranker_model_name": constants.RERANKER_MODEL_NAME,
+        })
+
+    elif experiment_name == "experiment_7":
+        metadata.update({
+            "topic_limit": constants.EXPERIMENT_7_TOPIC_LIMIT,
+            "c_values": constants.EXPERIMENT_7_C_VALUES,
+            "eval_metrics": [str(m) for m in constants.EXPERIMENT_7_EVAL_METRICS],
+            "n_rewrites": constants.EXPERIMENT_7_N_REWRITES,
+            "cross_enc_budget": constants.EXPERIMENT_7_CROSS_ENC_BUDGET,
+            "top_s": constants.EXPERIMENT_7_TOP_S,
         })
 
     if additional_metadata:

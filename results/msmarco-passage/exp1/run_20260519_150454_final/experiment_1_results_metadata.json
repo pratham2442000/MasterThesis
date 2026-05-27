@@ -1,0 +1,31 @@
+{
+  "experiment_name": "experiment_1",
+  "timestamp": "2026-05-19T21:04:40.730736",
+  "data_path": "/content/drive/MyDrive/MasterThesis/data/msmarco-passage",
+  "data_split": "19",
+  "dataset_name": "msmarco-passage",
+  "index_path": "./index/msmarco_passage_index/data.properties",
+  "reranker_type": "cross_encoder",
+  "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L6-v2",
+  "topic_limit": 100,
+  "c_values": [
+    10,
+    16,
+    27,
+    46,
+    77,
+    129,
+    215,
+    359,
+    599,
+    1000
+  ],
+  "t5_batch_size": 16,
+  "experiment_batch_size": 10,
+  "eval_metrics": [
+    "R@10",
+    "R@50",
+    "nDCG@10"
+  ],
+  "execution_time": "5:59:46.700872"
+}

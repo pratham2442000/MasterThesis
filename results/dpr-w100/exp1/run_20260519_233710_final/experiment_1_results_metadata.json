@@ -1,0 +1,31 @@
+{
+  "experiment_name": "experiment_1",
+  "timestamp": "2026-05-20T00:32:24.968252",
+  "data_path": "/content/drive/MyDrive/MasterThesis/data/dpr-w100",
+  "data_split": "dev",
+  "dataset_name": "dpr-w100",
+  "index_path": "./index/dpr_w100_index/data.properties",
+  "reranker_type": "cross_encoder",
+  "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L6-v2",
+  "topic_limit": 100,
+  "c_values": [
+    10,
+    16,
+    27,
+    46,
+    77,
+    129,
+    215,
+    359,
+    599,
+    1000
+  ],
+  "t5_batch_size": 16,
+  "experiment_batch_size": 10,
+  "eval_metrics": [
+    "R@10",
+    "R@50",
+    "nDCG@10"
+  ],
+  "execution_time": "0:55:14.852063"
+}

@@ -1,0 +1,37 @@
+{
+  "experiment_name": "experiment_7",
+  "timestamp": "2026-05-27T03:22:39",
+  "source": "reconstructed_from_terminal_trace",
+  "dataset_name": "wiki_musique",
+  "reranker_type": "monot5",
+  "reranker_model": "castorini/monot5-base-msmarco",
+  "topic_limit": 100,
+  "c_values": [
+    10,
+    16,
+    27,
+    46,
+    77,
+    129,
+    215,
+    359,
+    599,
+    1000
+  ],
+  "ce_mode": "linear (old code, batch_size=128)",
+  "batch_size_used": 128,
+  "ce_values_used": {
+    "10": 1,
+    "16": 1,
+    "27": 1,
+    "46": 1,
+    "77": 1,
+    "129": 2,
+    "215": 2,
+    "359": 3,
+    "599": 5,
+    "1000": 8
+  },
+  "note": "batch_size was effectively 128 (old code). ce=ceil(c/128). Now fixed to REFORMIR_BATCH_SIZE=16.",
+  "anomaly": "c=129 shows massive ReformIR drop (R@10=0.1521). Likely regression instability with only 2 CE batches."
+}
