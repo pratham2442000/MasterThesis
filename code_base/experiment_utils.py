@@ -477,6 +477,9 @@ def get_reader(live: bool):
         max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
         generation_args={"temperature": 0.1},
     )
+    # Decoder-only models (Llama) need left-padding for correct generation
+    backend.tokenizer.padding_side = "left"
+
     reader = Reader(backend, prompt=constants.RAG_PROMPT)
     # Reader.__post_init__ wraps backend into TextGenerator.
     # Return raw backend for sharing with LLMasJudge.

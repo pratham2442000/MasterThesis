@@ -95,21 +95,31 @@ def _validate_columns(df, required, df_name):
         )
 
 
-def _safe_query(res):
+def _safe_query(res, topics_lookup=None):
     """
     Query text is often dropped by pt.Experiment().
-    Try multiple fallback strategies.
+    Try: res columns → topics_lookup by qid → empty string.
     """
 
     if "query" in res.columns and len(res["query"]):
         q = res["query"].iloc[0]
-        if isinstance(q, str):
+        if isinstance(q, str) and q.strip():
             return q
 
     if "question" in res.columns and len(res["question"]):
         q = res["question"].iloc[0]
-        if isinstance(q, str):
+        if isinstance(q, str) and q.strip():
             return q
+
+    # Fallback: look up from topics via qid
+    if topics_lookup is not None:
+        qid = None
+        for col in ("qid", "query_id"):
+            if col in res.columns and len(res[col]):
+                qid = str(res[col].iloc[0])
+                break
+        if qid and qid in topics_lookup:
+            return topics_lookup[qid]
 
     warnings.warn(
         "No query text found in run dataframe. "
@@ -206,6 +216,7 @@ def _build_langchain_model(model_id: str, shared_backend: Any = None):
         if model_obj is not None and tokenizer_obj is not None:
             import transformers
             print("LLM Judge: extracting model/tokenizer from shared backend")
+            tokenizer_obj.padding_side = "left"
             pipe = transformers.pipeline(
                 "text-generation",
                 model=model_obj,
@@ -293,6 +304,11 @@ class LLMJudgeEvaluator:
             raw_output = self._generate(prompt)
             score_val = _parse_rating(raw_output)
 
+            print(f"\n[LLM Judge] query={query!r}")
+            print(f"[LLM Judge] prediction={prediction!r}")
+            print(f"[LLM Judge] raw_output={raw_output!r}")
+            print(f"[LLM Judge] parsed_score={score_val}")
+
             if score_val <= 0:
                 warnings.warn(
                     f"Could not parse rating from output:\n{raw_output}"
@@ -303,7 +319,7 @@ class LLMJudgeEvaluator:
 
         scores = []
 
-        for reference in references:
+        for i, reference in enumerate(references):
             prompt = JUDGE_PROMPT.format(
                 query=query,
                 reference=reference,
@@ -311,6 +327,12 @@ class LLMJudgeEvaluator:
             )
             raw_output = self._generate(prompt)
             score_val = _parse_rating(raw_output)
+
+            print(f"\n[LLM Judge] query={query!r}")
+            print(f"[LLM Judge] reference[{i}]={reference!r}")
+            print(f"[LLM Judge] prediction={prediction!r}")
+            print(f"[LLM Judge] raw_output={raw_output!r}")
+            print(f"[LLM Judge] parsed_score={score_val}")
 
             if score_val <= 0:
                 warnings.warn(
@@ -356,6 +378,7 @@ def LLMasJudge(
         aggregation: str = "max",
         rel: int = 3,
         shared_backend=None,
+        topics_df=None,
 ):
     """
     Create an ir_measures-compatible LLM judge metric.
@@ -373,6 +396,8 @@ def LLMasJudge(
             Accepts: LangChain HuggingFacePipeline, transformers
             Pipeline, or pyterrier_rag HuggingFaceBackend.
             Avoids loading the model twice (OOM on single GPU).
+        topics_df: DataFrame with 'qid' and 'query' columns.
+            Used to look up query text when pipeline drops it.
     """
 
     evaluator = LLMJudgeEvaluator(
@@ -381,6 +406,17 @@ def LLMasJudge(
         rel=rel,
         shared_backend=shared_backend,
     )
+
+    # Build qid → query lookup
+    topics_lookup = None
+    if topics_df is not None:
+        qid_col = "qid" if "qid" in topics_df.columns else "query_id"
+        q_col = "query" if "query" in topics_df.columns else "question"
+        if qid_col in topics_df.columns and q_col in topics_df.columns:
+            topics_lookup = dict(zip(
+                topics_df[qid_col].astype(str),
+                topics_df[q_col].astype(str),
+            ))
 
     metric_name = (
         f"LLMasJudge("
@@ -419,7 +455,7 @@ def LLMasJudge(
 
         prediction = str(res["qanswer"].iloc[0])
 
-        query = _safe_query(res)
+        query = _safe_query(res, topics_lookup=topics_lookup)
 
         # text column optional
         references = None

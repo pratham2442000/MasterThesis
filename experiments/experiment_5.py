@@ -117,7 +117,8 @@ def main():
 
     # Share raw backend with LLMasJudge to avoid loading model twice (OOM)
     eval_metrics = constants.get_experiment_5_eval_metrics(
-        shared_backend=raw_backend
+        shared_backend=raw_backend,
+        topics_df=topics,
     )
     rag_runner.eval_metrics = eval_metrics
 

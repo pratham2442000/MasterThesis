@@ -39,8 +39,8 @@ EXPERIMENT_BATCH_SIZE = 10
 _DATASET_CONFIGS = {
     "wiki_musique": {
         "DATA_PATH": (
-            #   "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
+            "/scratch/pjohari/MasterThesis/data/2wikimultihopQA"
+            # "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA"
         ),
         "DATA_SPLIT": "dev",
         "INDEX_PATH": "./index/wiki_musique_index/data.properties",
@@ -58,8 +58,8 @@ _DATASET_CONFIGS = {
     },
     "msmarco-passage": {
         "DATA_PATH": (
-            #   "/scratch/pjohari/MasterThesis/data/msmarco-passage"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
+            "/scratch/pjohari/MasterThesis/data/msmarco-passage"
+            # "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage"
         ),
         "DATA_SPLIT": "19",  # -> irds:msmarco-passage/trec-dl-2019/judged
         "INDEX_PATH": "./index/msmarco_passage_index/data.properties",
@@ -72,8 +72,8 @@ _DATASET_CONFIGS = {
     },
     "dpr-w100": {
         "DATA_PATH": (
-            #   "/scratch/pjohari/MasterThesis/data/dpr-w100"
-            "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100"
+            "/scratch/pjohari/MasterThesis/data/dpr-w100"
+            # "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100"
         ),
         "DATA_SPLIT": "dev",  # -> irds:dpr-w100/trivia-qa/dev
         "INDEX_PATH": "./index/dpr_w100_index/data.properties",
@@ -99,8 +99,8 @@ LAFF_BASE_GRAPH_PATH = _DATASET_CONFIGS[DATASET_NAME].get("LAFF_BASE_GRAPH_PATH"
 LAFF_GRAPH_PATH = _DATASET_CONFIGS[DATASET_NAME].get("LAFF_GRAPH_PATH", "")
 
 RESULTS_PATH = (
-    #   "/scratch/pjohari/MasterThesis/results/"
-    "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
+    "/scratch/pjohari/MasterThesis/results/"
+    # "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/results/"
 )
 
 # TCT-ColBERT v2-HNP — same model used by build_all.py to build TCT_INDEX_PATH
@@ -176,16 +176,18 @@ EXPERIMENT_5_RETRIEVAL_METRICS = [R @ 10, R @ 100]
 EXPERIMENT_5_TOP_K = 5  # Passages fed to generator
 
 
-def get_experiment_5_eval_metrics(shared_backend=None):
+def get_experiment_5_eval_metrics(shared_backend=None, topics_df=None):
     """Build eval metrics for Experiment 5, optionally sharing model backend.
 
     Args:
         shared_backend: Existing HuggingFace backend from RAG reader.
             Pass this to avoid loading Llama twice (OOM on single GPU).
+        topics_df: DataFrame with 'qid' and 'query' columns for query lookup.
     """
     return [rag_measures.EM, rag_measures.F1,
             LLMasJudge(f"{MODELS_CACHE_DIR}/Llama-3.2-3B-Instruct",
-                       shared_backend=shared_backend)]
+                       shared_backend=shared_backend,
+                       topics_df=topics_df)]
 
 
 # ==================== Experiment 6 Configuration (RAG + Rewrites) =====
@@ -195,11 +197,12 @@ EXPERIMENT_6_N_REWRITES = [int(i) for i in np.linspace(1, 30, 10, dtype=int)]
 EXPERIMENT_6_TOP_K = 5  # Passages fed to generator
 
 
-def get_experiment_6_eval_metrics(shared_backend=None):
+def get_experiment_6_eval_metrics(shared_backend=None, topics_df=None):
     """Build eval metrics for Experiment 6, optionally sharing model backend."""
     return [rag_measures.EM, rag_measures.F1,
             LLMasJudge(f"{MODELS_CACHE_DIR}/Llama-3.2-3B-Instruct",
-                       shared_backend=shared_backend)]
+                       shared_backend=shared_backend,
+                       topics_df=topics_df)]
 
 
 # ==================== Experiment 7 Configuration (ReformIR) =====
@@ -281,15 +284,20 @@ RAG_MODEL_NAME = "meta-llama/Llama-3.2-3B-Instruct"
 # DENSE_MODEL_NAME = "castorini/tct_colbert-msmarco"
 
 RAG_PROMPT = (
-    "You are given passages and a question. "
-    "Answer the question using ONLY information from the passages below. "
-    "Give a short answer (1-5 words). Do not explain. Do not add extra text.\n\n"
+    "<|begin_of_text|>"
+    "<|start_header_id|>system<|end_header_id|>\n\n"
+    "You are a precise question-answering assistant. "
+    "Answer using ONLY the provided passages. "
+    "Give a short answer (1-5 words). "
+    "If you cannot find the answer, say 'unanswerable'. "
+    "Do not explain. Do not add extra text.<|eot_id|>"
+    "<|start_header_id|>user<|end_header_id|>\n\n"
     "Passages:\n{{ qcontext }}\n\n"
-    "Question: {{ query }}\n"
-    "Answer:"
+    "Question: {{ query }}<|eot_id|>"
+    "<|start_header_id|>assistant<|end_header_id|>\n\n"
 )
 
-RAG_MODEL_MAX_NEW_TOKENS = 512
+RAG_MODEL_MAX_NEW_TOKENS = 64
 RAG_CONCATENATOR_TOP_K = 5
 
 # TODO have documents as the x axis not the number of queries (i.e find the average number of documents considered after merge(i.e before reranker) for each query rewrite) #still need to figure out how
