@@ -60,25 +60,34 @@ import ir_measures
 
 SYSTEM_MESSAGE = "You are a precise and rigorous evaluator."
 
-# Max tokens for judge generation
-JUDGE_MAX_NEW_TOKENS = 128
+# Max tokens for judge generation — only need a single integer
+JUDGE_MAX_NEW_TOKENS = 32
 
-JUDGE_PROMPT = """
-Compare the system answer to the gold reference.
-Query: {query}
-Gold answer: {reference}
-System answer: {prediction}
-Rate 1-10 (1=wrong, 10=correct).
-IMPORTANT: Reply with ONLY a single integer. Do not add any text, notes, or explanations.
-Rating:""".strip()
+# Llama-3.2-Instruct chat-template wrapped prompts
+JUDGE_PROMPT = (
+    "<|begin_of_text|>"
+    "<|start_header_id|>system<|end_header_id|>\n\n"
+    "You are a strict evaluator. Compare the system answer to the gold reference. "
+    "Reply with ONLY a single integer 1-10. No text, no explanation.<|eot_id|>"
+    "<|start_header_id|>user<|end_header_id|>\n\n"
+    "Query: {query}\n"
+    "Gold answer: {reference}\n"
+    "System answer: {prediction}\n"
+    "Rate 1-10 (1=completely wrong, 10=exactly correct).<|eot_id|>"
+    "<|start_header_id|>assistant<|end_header_id|>\n\n"
+)
 
-JUDGE_PROMPT_NO_REF = """
-Assess if the system answer is reasonable.
-Query: {query}
-System answer: {prediction}
-Rate 1-10 (1=nonsensical, 10=excellent).
-IMPORTANT: Reply with ONLY a single integer. Do not add any text, notes, or explanations.
-Rating:""".strip()
+JUDGE_PROMPT_NO_REF = (
+    "<|begin_of_text|>"
+    "<|start_header_id|>system<|end_header_id|>\n\n"
+    "You are a strict evaluator. Assess if the system answer is reasonable. "
+    "Reply with ONLY a single integer 1-10. No text, no explanation.<|eot_id|>"
+    "<|start_header_id|>user<|end_header_id|>\n\n"
+    "Query: {query}\n"
+    "System answer: {prediction}\n"
+    "Rate 1-10 (1=nonsensical, 10=excellent).<|eot_id|>"
+    "<|start_header_id|>assistant<|end_header_id|>\n\n"
+)
 
 
 # -------------------------------------------------------------------------
@@ -223,6 +232,7 @@ def _build_langchain_model(model_id: str, shared_backend: Any = None):
                 tokenizer=tokenizer_obj,
                 max_new_tokens=JUDGE_MAX_NEW_TOKENS,
                 do_sample=False,
+                return_full_text=False,
             )
             return HuggingFacePipeline(pipeline=pipe)
 
@@ -244,6 +254,7 @@ def _build_langchain_model(model_id: str, shared_backend: Any = None):
         do_sample=False,
         device_map="auto",
         torch_dtype="auto",
+        return_full_text=False,
     )
     return HuggingFacePipeline(pipeline=pipe)
 
