@@ -1,0 +1,11 @@
+{
+  "experiment_name": "experiment_2b",
+  "timestamp": "2026-06-02T01:47:48.474547",
+  "data_path": "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA",
+  "data_split": "dev",
+  "dataset_name": "wiki_musique",
+  "index_path": "./index/wiki_musique_index/data.properties",
+  "reranker_type": "cross_encoder",
+  "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L6-v2",
+  "execution_time": "3:36:16.933271"
+}

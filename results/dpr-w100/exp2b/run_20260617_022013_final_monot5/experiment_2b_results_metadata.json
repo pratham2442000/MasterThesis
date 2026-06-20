@@ -1,0 +1,11 @@
+{
+  "experiment_name": "experiment_2b",
+  "timestamp": "2026-06-18T05:19:45.552661",
+  "data_path": "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/dpr-w100",
+  "data_split": "dev",
+  "dataset_name": "dpr-w100",
+  "index_path": "./index/dpr_w100_index/data.properties",
+  "reranker_type": "monot5",
+  "reranker_model_name": "castorini/monot5-base-msmarco",
+  "execution_time": "1 day, 2:59:31.878134"
+}

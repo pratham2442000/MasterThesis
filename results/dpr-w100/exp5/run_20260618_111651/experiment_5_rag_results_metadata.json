@@ -1,0 +1,11 @@
+{
+  "experiment_name": "experiment_5_rag",
+  "timestamp": "2026-06-18T13:22:11.637667",
+  "data_path": "/content/MasterThesis_Local/data/dpr-w100",
+  "data_split": "dev",
+  "dataset_name": "dpr-w100",
+  "index_path": "./index/dpr_w100_index/data.properties",
+  "reranker_type": "cross_encoder",
+  "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L6-v2",
+  "execution_time": "2:05:20.482417"
+}

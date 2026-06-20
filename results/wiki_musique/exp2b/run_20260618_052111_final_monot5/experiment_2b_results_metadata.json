@@ -1,0 +1,11 @@
+{
+  "experiment_name": "experiment_2b",
+  "timestamp": "2026-06-19T16:08:43.582131",
+  "data_path": "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/2wikimultihopQA",
+  "data_split": "dev",
+  "dataset_name": "wiki_musique",
+  "index_path": "./index/wiki_musique_index/data.properties",
+  "reranker_type": "monot5",
+  "reranker_model_name": "castorini/monot5-base-msmarco",
+  "execution_time": "1 day, 10:47:31.630614"
+}

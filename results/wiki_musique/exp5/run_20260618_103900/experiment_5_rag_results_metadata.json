@@ -1,0 +1,11 @@
+{
+  "experiment_name": "experiment_5_rag",
+  "timestamp": "2026-06-18T11:12:47.826043",
+  "data_path": "/content/MasterThesis_Local/data/2wikimultihopQA",
+  "data_split": "dev",
+  "dataset_name": "wiki_musique",
+  "index_path": "./index/wiki_musique_index/data.properties",
+  "reranker_type": "cross_encoder",
+  "reranker_model_name": "cross-encoder/ms-marco-MiniLM-L6-v2",
+  "execution_time": "0:33:47.610220"
+}
