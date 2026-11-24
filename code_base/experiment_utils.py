@@ -21,8 +21,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import linregress
+import pyterrier as pt
 
 import constants
+
 
 
 def get_text_getter(index_ref=None):
@@ -175,11 +177,32 @@ def _setup_plot(
 
 
 def _apply_log_ticks(ax, df, x_col, use_log_scale):
-    """Apply log-scale formatting to x-axis if requested."""
+    """Apply log-scale formatting to x-axis with nice round tick values."""
     if use_log_scale:
+        from matplotlib.ticker import ScalarFormatter, NullFormatter
+
         ax.set_xscale("log")
-        ax.set_xticks(df[x_col])
-        ax.set_xticklabels([str(v) for v in df[x_col]])
+
+        # Nice round numbers for log-scale ticks
+        _NICE_TICKS = [
+            1, 2, 5, 10, 15 , 25, 45, 50, 75,
+            100, 150, 200, 250, 300, 500, 750,
+            1000, 1500, 2000, 2500, 5000, 10000,
+        ]
+
+        x_min = df[x_col].min()
+        x_max = df[x_col].max()
+        ticks = [t for t in _NICE_TICKS if x_min * 0.8 <= t <= x_max * 1.2]
+
+        if len(ticks) < 3:
+            # Fallback: use actual data values
+            ticks = sorted(df[x_col].unique())
+
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([str(int(v)) if v == int(v) else str(v) for v in ticks])
+
+        # Suppress minor tick labels
+        ax.xaxis.set_minor_formatter(NullFormatter())
 
 
 def _save_or_show(fig, filename, output_dir):
@@ -475,7 +498,7 @@ def get_reader(live: bool):
     backend = HuggingFaceBackend(
         model_id,
         max_new_tokens=constants.RAG_MODEL_MAX_NEW_TOKENS,
-        generation_args={"temperature": 0.1},
+        generation_args={"do_sample":False, "temperature": 0.1},
     )
     # Decoder-only models (Llama) need left-padding for correct generation
     backend.tokenizer.padding_side = "left"
@@ -562,6 +585,7 @@ def collect_experiment_metadata(
             "top_s2": constants.EXPERIMENT_4_TOP_S2,
             "laff_k": constants.EXPERIMENT_4_LAFF_K,
             "flex_index_path": constants.EXPERIMENT_4_FLEX_INDEX_PATH,
+            "ore_batch_size": constants.ORE_BATCH_SIZE,
         })
 
     elif experiment_name == "experiment_6":
@@ -707,3 +731,30 @@ def find_experiment_files(
         }
 
     return {"csv": csv_files, "metadata": meta_files}
+
+
+class ColumnPreservingReader(pt.Transformer):
+    """Wrapper around PyTerrier RAG Reader to preserve input columns (like query, qcontext)
+    which are discarded/renamed by PromptTransformer.
+    Also prints LLM responses to console for visibility.
+    """
+    def __init__(self, reader):
+        self.reader = reader
+
+    def transform(self, inp: pd.DataFrame) -> pd.DataFrame:
+        res = self.reader.transform(inp)
+        cols_to_keep = [c for c in res.columns if c not in inp.columns or c == "qid"]
+        merged = pd.merge(inp, res[cols_to_keep], on="qid", how="left").reset_index(drop=True)
+
+        
+        print("\n" + "="*50)
+        print("LLM RESPONSES (Batch):")
+        print("="*50)
+        for _, row in merged.iterrows():
+            print(f"Query ID: {row['qid']}")
+            print(f"Query:    {row.get('query', '')}")
+            print(f"Answer:   {row.get('qanswer', '')}")
+            print("-" * 50)
+        return merged
+
+

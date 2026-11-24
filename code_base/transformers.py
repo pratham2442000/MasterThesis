@@ -4,7 +4,7 @@ PyTerrier Transformers
 All custom PyTerrier Transformer classes for the experiment pipelines.
 
 Includes:
-- Query preprocessing and rewriting (QueryRewriteTransformer)
+- Query preprocessing and rewriting (QueryRewriteTransformer, BestRewriteTransformer)
 - Result merging (MergeRewrites, AttachOriginalQuery)
 - Deduplication (Dedup, DedupAndCutoff)
 - Fusion methods (BordaVotingTransformerV2, CombMAXTransformer, RRFTransformer)
@@ -18,6 +18,7 @@ import pyterrier as pt
 
 import constants
 from code_base.llm_q import rewrite_single_query
+from code_base.llm_best_rewrite import get_best_rewrite
 
 
 # ─────────────────────────────────────────────
@@ -91,6 +92,58 @@ class QueryRewriteTransformer(pt.Transformer):
                     "orig_qid": qid,
                     "query": preprocess_query(rw),
                 })
+
+        return pd.DataFrame(out_rows)
+
+
+class BestRewriteTransformer(pt.Transformer):
+    """Replace each query with the LLM-selected best rewrite for a given N.
+
+    Unlike ``QueryRewriteTransformer`` which expands to N sub-queries,
+    this transformer substitutes the query text with a single best rewrite
+    chosen by an LLM from the first N candidates.
+
+    Args:
+        n: Number of rewrite candidates the LLM chose from.
+            Must match a value in ``EXPERIMENT_2_N_REWRITES``.
+        dataset_name: Dataset identifier used to locate the best-rewrite CSV.
+            Defaults to ``constants.DATASET_NAME``.
+    """
+
+    def __init__(self, n: int, dataset_name: Optional[str] = None):
+        self.n = n
+        self.dataset_name = dataset_name or constants.DATASET_NAME
+
+    def transform(self, topics_like: pd.DataFrame) -> pd.DataFrame:
+        """Replace query text with LLM-selected best rewrite.
+
+        Args:
+            topics_like: DataFrame with at least ``qid`` and ``query`` columns.
+
+        Returns:
+            DataFrame with ``query`` replaced by best rewrite. ``qid`` unchanged.
+        """
+        if topics_like.empty:
+            return topics_like.copy()
+
+        out_rows: list[dict] = []
+        for _, row in topics_like.iterrows():
+            qid = row["qid"]
+            query = row["query"]
+            try:
+                best = get_best_rewrite(
+                    self.dataset_name, str(qid), self.n
+                )
+            except (ValueError, FileNotFoundError, KeyError) as exc:
+                print(
+                    f"Warning: Could not load best rewrite for qid {qid}, "
+                    f"n={self.n}: {exc}. Using original query."
+                )
+                best = query
+
+            new_row = row.to_dict()
+            new_row["query"] = preprocess_query(best)
+            out_rows.append(new_row)
 
         return pd.DataFrame(out_rows)
 

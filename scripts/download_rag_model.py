@@ -9,8 +9,8 @@ import sys
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# Add parent directories to path to import constants
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+# Add parent directory to path to import constants
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import constants
 
 
@@ -41,8 +41,7 @@ def download_causal_lm(model_name: str, output_dir: str):
 
 if __name__ == "__main__":
     # Base path for model storage
-    # On DelftBlue use: "/scratch/pjohari/MasterThesis/models"
-    base_path = "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/models"
+    base_path = os.environ.get("MODELS_CACHE_DIR", os.path.abspath(constants.MODELS_CACHE_DIR))
 
     # Download the RAG generation model from constants
     model_name = constants.RAG_MODEL_NAME

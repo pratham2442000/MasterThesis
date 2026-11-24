@@ -44,7 +44,8 @@ from pyterrier.measures import R, nDCG
 from code_base.dataset_factory import get_gold_answers
 from code_base.experiment_runner import ExperimentRunner
 from code_base import dataset_factory
-from code_base.experiment_utils import get_text_getter, get_reranker
+from code_base.experiment_utils import get_text_getter, get_reranker, ColumnPreservingReader
+
 
 # pyterrier-rag imports
 from pyterrier_rag.prompt import Concatenator
@@ -317,7 +318,9 @@ def run_single_query_test(live: bool, cutoff: int = 20, split_override: str = No
     # --- Step 7: Generation ---
     print(f"\n[STEP 7] Answer generation...")
     reader, _ = get_reader(live)
-    generated = reader.transform(concatenated)
+    wrapped_reader = ColumnPreservingReader(reader)
+    generated = wrapped_reader.transform(concatenated)
+
 
     if "qanswer" in generated.columns:
         gen_answer = generated.iloc[0]["qanswer"]
@@ -410,7 +413,12 @@ def main():
         eval_metrics=[],
     )
     topics, qrels, query_lookup = data_runner.load_data()
-    gold_answers = get_gold_answers(topics)
+    gold_answers = get_gold_answers(topics).reset_index(drop=True)
+    gold_answers["docno"] = [f"gold_{i}" for i in range(len(gold_answers))]
+    gold_answers["label"] = 1
+    gold_answers["text"] = gold_answers["gold_answer"]
+    gold_answers["relevance"] = 3
+
 
     # ---- 2. Setup Index + Models ----
     print("\n" + "=" * 60)
@@ -453,6 +461,7 @@ def main():
     # ---- 4. Generation Pipeline Setup and Eval ----
     print("\n" + "=" * 60)
     reader, raw_backend = get_reader(args.live)
+    wrapped_reader = ColumnPreservingReader(reader)
 
     # Share raw backend with LLMasJudge when live to avoid double model load
     rag_eval_metrics = constants.get_experiment_5_eval_metrics(
@@ -473,7 +482,7 @@ def main():
             pipeline_factory=rag_pipeline_factory,
             topics=topics,
             qrels=gold_answers,
-            factory_kwargs={"index_ref": index_ref, "reranker": reranker, "reader": reader}
+            factory_kwargs={"index_ref": index_ref, "reranker": reranker, "reader": wrapped_reader}
         )
         print("\nRAG Generation Evaluation Results:")
         print(rag_df)
@@ -499,7 +508,7 @@ def main():
 
     for cutoff_val in constants.EXPERIMENT_5_C_VALUES:
         pipelines = rag_pipeline_factory(
-            cutoff_val, index_ref=index_ref, reranker=reranker, reader=reader
+            cutoff_val, index_ref=index_ref, reranker=reranker, reader=wrapped_reader
         )
         for sys_name, pipeline in pipelines.items():
             print(f"  Tracing {sys_name} (cutoff={cutoff_val})...")

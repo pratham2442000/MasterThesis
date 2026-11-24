@@ -88,7 +88,7 @@ def build_pipelines(
 def _system_label(key):
     return {
         "Dense": "Dense Baseline",
-        "Dense_MonoT5": f"Dense + {constants.RERANKER_NAME}",
+        f"Dense_{constants.RERANKER_NAME}": f"Dense + {constants.RERANKER_NAME}",
         "Pipeline_Borda": "Borda Voting",
         "Pipeline_CombMAX": "CombMAX",
         "Pipeline_RRF": "RRF",

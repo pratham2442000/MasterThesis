@@ -283,6 +283,8 @@ def run_timed_sweep(runner, sweep_values, topics, qrels, factory_kwargs, ce_mode
 
 def main():
     """Run Experiment 7."""
+    if not pt.started():
+        pt.init(mem=16000)
     print("Starting Experiment 7 (ReformIR)...")
 
     runner = ExperimentRunner(

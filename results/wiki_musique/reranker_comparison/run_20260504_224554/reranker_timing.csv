@@ -1,5 +1,0 @@
-reranker,time_seconds,docs_per_sec,total_docs
-NoRerank,0.0,980894.3,1500
-MiniLM-L6,3.5,428.1,1500
-MiniLM-L12,3.98,377.2,1500
-MonoT5,33.63,44.6,1500

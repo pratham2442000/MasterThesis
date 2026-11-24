@@ -19,7 +19,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import constants
 from code_base.experiment_runner import ExperimentRunner
 from code_base.dataset_factory import get_gold_answers
-from code_base.experiment_utils import get_text_getter, get_reranker, get_reader
+from code_base.experiment_utils import get_text_getter, get_reranker, get_reader, ColumnPreservingReader
+
 
 
 # pyterrier-rag imports
@@ -104,16 +105,20 @@ def main():
     results_dir = rag_runner.setup()
     topics, qrels, _ = rag_runner.load_data()
 
-    index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
+    index_ref = pt.IndexFactory.of(constants.INDEX_PATH)
     reranker = _get_reranker()
 
-    gold_answers = get_gold_answers(topics)
+    gold_answers = get_gold_answers(topics).reset_index(drop=True)
+
+    # Add unique docno and label to be a valid qrels dataframe
+    gold_answers["docno"] = [f"gold_{i}" for i in range(len(gold_answers))]
+    gold_answers["label"] = 3  # becomes 'relevance' via ir_measures conversion; must match LLMasJudge rel threshold
     # LLMasJudge expects qrels with columns: query_id, relevance, text
-    # PyTerrier internally renames qid -> query_id, so we only add text & relevance
+    # PyTerrier internally renames label -> relevance, so do NOT set 'relevance' separately
     gold_answers["text"] = gold_answers["gold_answer"]
-    gold_answers["relevance"] = 3  # default rel threshold in LLMasJudge is 3
 
     reader, raw_backend = get_reader(live=True)
+    wrapped_reader = ColumnPreservingReader(reader)
 
     # Share raw backend with LLMasJudge to avoid loading model twice (OOM)
     eval_metrics = constants.get_experiment_5_eval_metrics(
@@ -128,7 +133,7 @@ def main():
         pipeline_factory=build_rag_pipelines,
         topics=topics,
         qrels=gold_answers,
-        factory_kwargs={"index_ref": index_ref, "reranker": reranker, "reader": reader},
+        factory_kwargs={"index_ref": index_ref, "reranker": reranker, "reader": wrapped_reader},
     )
 
     rag_runner.save(rag_df, results_dir, filename="experiment_5_rag_results")

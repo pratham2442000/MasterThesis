@@ -1,0 +1,11 @@
+{
+  "experiment_name": "experiment_2b",
+  "timestamp": "2026-06-20T06:27:14.178275",
+  "data_path": "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage",
+  "data_split": "19",
+  "dataset_name": "msmarco-passage",
+  "index_path": "./index/msmarco_passage_index/data.properties",
+  "reranker_type": "monot5",
+  "reranker_model_name": "castorini/monot5-base-msmarco",
+  "execution_time": "7:16:49.918422"
+}

@@ -38,7 +38,7 @@ from code_base.transformers import (
 # -----------------------------------------------------------------------------
 # Configuration & Constants
 # -----------------------------------------------------------------------------
-LOCAL_MODEL_BASE = "/scratch/pjohari/MasterThesis/models"
+LOCAL_MODEL_BASE = os.environ.get("LOCAL_MODEL_BASE", os.path.abspath(constants.MODELS_CACHE_DIR))
 LOG_FILENAME = "experiment_2_mpi.log"
 
 

@@ -53,6 +53,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import ir_measures
+import pandas as pd
 
 # -------------------------------------------------------------------------
 # Prompt Templates
@@ -61,31 +62,65 @@ import ir_measures
 SYSTEM_MESSAGE = "You are a precise and rigorous evaluator."
 
 # Max tokens for judge generation — only need a single integer
-JUDGE_MAX_NEW_TOKENS = 32
+JUDGE_MAX_NEW_TOKENS = 2000
 
 # Llama-3.2-Instruct chat-template wrapped prompts
 JUDGE_PROMPT = (
     "<|begin_of_text|>"
     "<|start_header_id|>system<|end_header_id|>\n\n"
-    "You are a strict evaluator. Compare the system answer to the gold reference. "
-    "Reply with ONLY a single integer 1-10. No text, no explanation.<|eot_id|>"
+    "You are a strict factual evaluator. Compare the system answer to the gold reference. "
+    "Reply with ONLY a single integer from 1 to 10.\n\n"
+    "Scoring rules (strict):\n"
+    "- 1-2: The answer is completely wrong (e.g., gives a year when a name is expected, "
+    "answers 'None' or 'No information', or provides an irrelevant fact).\n"
+    "- 3-4: The answer is of the correct type (e.g., a person name) but factually incorrect.\n"
+    "- 5-6: The answer is partially correct (e.g., contains a correct detail but misses the main answer).\n"
+    "- 7-8: The answer is mostly correct but has minor inaccuracies or missing context.\n"
+    "- 9-10: The answer exactly matches the gold reference in all essential aspects.\n\n"
+    "Examples:\n"
+    "Query: which film has the director died first A or B\n"
+    "Gold: Film A\n"
+    "System: 1979\n"
+    "Score: 1\n\n"
+    "Query: why did person's wife die\n"
+    "Gold: stroke\n"
+    "System: 1951\n"
+    "Score: 1\n\n"
+    "Query: where was the director of film X born\n"
+    "Gold: New York\n"
+    "System: None of the above\n"
+    "Score: 1\n\n"
+    "Query: who is person's father\n"
+    "Gold: John Smith\n"
+    "System: John Smith Jr.\n"
+    "Score: 5\n\n"
+    "Query: what nationality is the director of film Y\n"
+    "Gold: United States\n"
+    "System: American\n"
+    "Score: 9\n"
+    "<|eot_id|>"
     "<|start_header_id|>user<|end_header_id|>\n\n"
     "Query: {query}\n"
     "Gold answer: {reference}\n"
     "System answer: {prediction}\n"
-    "Rate 1-10 (1=completely wrong, 10=exactly correct).<|eot_id|>"
+    "Score (1-10):<|eot_id|>"
     "<|start_header_id|>assistant<|end_header_id|>\n\n"
 )
+
 
 JUDGE_PROMPT_NO_REF = (
     "<|begin_of_text|>"
     "<|start_header_id|>system<|end_header_id|>\n\n"
-    "You are a strict evaluator. Assess if the system answer is reasonable. "
-    "Reply with ONLY a single integer 1-10. No text, no explanation.<|eot_id|>"
+    "You are a strict evaluator. Assess whether the system answer is reasonable and self-contained.\n"
+    "Rate on a scale of 1 (nonsensical/refusal) to 10 (excellent).\n"
+    "- If the answer says 'None of the above', 'No information', or refuses to answer, assign 1.\n"
+    "- If it contains only a year or a single word without context, assign 3.\n"
+    "- Give high scores only for complete, informative answers.\n"
+    "- Reply with ONLY the integer.<|eot_id|>"
     "<|start_header_id|>user<|end_header_id|>\n\n"
     "Query: {query}\n"
     "System answer: {prediction}\n"
-    "Rate 1-10 (1=nonsensical, 10=excellent).<|eot_id|>"
+    "Score (1-10):<|eot_id|>"
     "<|start_header_id|>assistant<|end_header_id|>\n\n"
 )
 
@@ -174,6 +209,11 @@ def _parse_rating(text: str) -> int:
             pass
 
     return 0
+
+
+def clean_prediction(text: str) -> str:
+    """Strip trailing '###' chat-template artifacts from generated answer."""
+    return re.sub(r"\n*###.*$", "", text, flags=re.DOTALL).strip()
 
 
 # -------------------------------------------------------------------------
@@ -459,12 +499,21 @@ def LLMasJudge(
         )
 
         # Filter relevance
-        qrels_filtered = qrels[qrels["relevance"] >= rel]
+        if isinstance(qrels, pd.Series):
+            qrels = pd.DataFrame([qrels])
+        if isinstance(qrels, pd.DataFrame):
+            qrels = qrels.reset_index(drop=True)
+            # Deduplicate columns if ir_measures passes frames with duplicate labels
+            qrels = qrels.loc[:, ~qrels.columns.duplicated()]
+
+        # Filter relevance — use .loc to avoid reindex issues
+        mask = qrels["relevance"] >= rel
+        qrels_filtered = qrels.loc[mask].reset_index(drop=True)
 
         if len(qrels_filtered) == 0:
             return 0.0
 
-        prediction = str(res["qanswer"].iloc[0])
+        prediction = clean_prediction(str(res["qanswer"].iloc[0]))
 
         query = _safe_query(res, topics_lookup=topics_lookup)
 
@@ -492,7 +541,7 @@ def LLMasJudge(
         name=metric_name,
         support_cutoff=False,
         run_inputs=["qanswer"],
-        qrel_inputs=["relevance"],
+        qrel_inputs=["relevance", "text"],
     )
 
 

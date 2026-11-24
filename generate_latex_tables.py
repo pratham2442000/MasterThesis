@@ -9,7 +9,7 @@ import pandas as pd
 
 from code_base.experiment_utils import find_experiment_files
 
-BASE = '/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis'
+BASE = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(BASE, 'results', 'latex_tables')
 os.makedirs(OUT_DIR, exist_ok=True)
 

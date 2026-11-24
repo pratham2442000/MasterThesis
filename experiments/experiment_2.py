@@ -93,7 +93,7 @@ def build_pipelines(n, *, index_ref, reranker, query_lookup, cutoff):
 def _system_label(key):
     return {
         "BM25": "BM25 Baseline",
-        "BM25_MonoT5": f"BM25 + {constants.RERANKER_NAME}",
+        f"BM25_{constants.RERANKER_NAME}": f"BM25 + {constants.RERANKER_NAME}",
         "Pipeline_DedupCutoff": "Dedup Cutoff Method",
         "Pipeline_Borda": "Borda Voting",
         "Pipeline_BordaWeighted": "Borda Weighted",

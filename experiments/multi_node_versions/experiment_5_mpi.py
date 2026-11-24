@@ -30,7 +30,7 @@ from pyterrier_rag.prompt import Concatenator
 # -----------------------------------------------------------------------------
 # Configuration & Constants
 # -----------------------------------------------------------------------------
-LOCAL_MODEL_BASE = "/scratch/pjohari/MasterThesis/models"
+LOCAL_MODEL_BASE = os.environ.get("LOCAL_MODEL_BASE", os.path.abspath(constants.MODELS_CACHE_DIR))
 LOG_FILENAME = "experiment_5_mpi.log"
 
 
@@ -242,7 +242,8 @@ def main():
 
         # Share raw backend with LLMasJudge (avoid loading model twice → OOM)
         eval_metrics = constants.get_experiment_5_eval_metrics(
-            shared_backend=raw_backend
+            shared_backend=raw_backend,
+            topics_df=my_topics,
         )
 
         # 3. Experiment Loop (varying cutoff c)

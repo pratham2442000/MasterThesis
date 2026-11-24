@@ -236,7 +236,7 @@ def main():
         index_ref = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
 
         # Load rerankers (skip failures)
-        LOCAL_MODEL_BASE = "/scratch/pjohari/MasterThesis/models"
+        LOCAL_MODEL_BASE = os.environ.get("LOCAL_MODEL_BASE", os.path.abspath(constants.MODELS_CACHE_DIR))
         monot5, cross_encoder = None, None
 
         try:

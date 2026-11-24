@@ -1,8 +1,0 @@
-{
-  "experiment_name": "experiment_2_noise_analysis",
-  "timestamp": "2026-05-04T19:21:12.694998",
-  "data_path": "/mnt/c/Users/prats/Documents/Uni(Tudelft)/MSc/MasterThesis/data/msmarco-passage",
-  "data_split": "19",
-  "dataset_name": "msmarco-passage",
-  "index_path": "./index/msmarco_passage_index/data.properties"
-}

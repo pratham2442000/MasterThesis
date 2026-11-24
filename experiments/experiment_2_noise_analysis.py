@@ -36,6 +36,7 @@ from code_base.experiment_utils import (
 )
 from code_base.transformers import (
     AttachOriginalQuery,
+    BestRewriteTransformer,
     Dedup,
     MergeRewrites,
     QueryRewriteTransformer,
@@ -194,7 +195,7 @@ def find_latest_exp2_results() -> pd.DataFrame:
         print("Warning: experiment_2 results CSV not found.")
         return pd.DataFrame()
 
-    path = candidates[0]  # latest by timestamp
+    path = candidates[1]  # latest by timestamp
     run_dir = os.path.dirname(path)
 
     # ── Reranker consistency check ──────────────────────────
@@ -240,6 +241,7 @@ def plot_comparison(df: pd.DataFrame, output_dir: str) -> None:
     """
     oracle_cols = [c for c in df.columns if c.startswith("Oracle_")]
     dedup_oracle_cols = [c for c in df.columns if c.startswith("DedupOracle_")]
+    best_rewrite_cols = [c for c in df.columns if c.startswith("BestRewrite_")]
 
     # Collect unique metric suffixes (e.g. "R@50", "R@10", "nDCG@10")
     metric_suffixes = set()
@@ -247,17 +249,26 @@ def plot_comparison(df: pd.DataFrame, output_dir: str) -> None:
         metric_suffixes.add(c.split("_", 1)[1])
     for c in dedup_oracle_cols:
         metric_suffixes.add(c.split("_", 1)[1])
+    for c in best_rewrite_cols:
+        metric_suffixes.add(c.split("_", 1)[1])
 
     for suffix in sorted(metric_suffixes):
         oracle_col = f"Oracle_{suffix}"
         dedup_col = f"DedupOracle_{suffix}"
 
-        # Find matching fusion method columns
+        # Find matching fusion method columns (exclude oracle/dedup/bestrewrite)
+        best_col = f"BestRewrite_{suffix}"
+        allowed_cols = {
+            f"BM25_{suffix}",
+            f"BM25_MonoT5_{suffix}",
+            f"Pipeline_Borda_{suffix}",
+            f"Pipeline_CombMAX_{suffix}",
+            f"Pipeline_RRF_{suffix}",
+            f"Pipeline_Exp4Fuse_{suffix}",
+        }
         matching_sys_cols = [
             c for c in df.columns
-            if c.endswith(f"_{suffix}")
-               and c != oracle_col
-               and c != dedup_col
+            if c in allowed_cols
         ]
 
         fig, ax = plt.subplots(figsize=(10, 6))
@@ -288,6 +299,15 @@ def plot_comparison(df: pd.DataFrame, output_dir: str) -> None:
                         textcoords="offset points", xytext=(0, 10),
                         fontsize=7, color="red", ha="center",
                     )
+
+        # BestRewrite line
+        if best_col in df.columns:
+            ax.plot(
+                df["n"], df[best_col],
+                label=f"LLM Best Rewrite ({suffix})",
+                marker="P", linestyle="-", linewidth=2,
+                color="green", markersize=8,
+            )
 
         # Rename BM25_MonoT5 → BM25_MiniLM to reflect actual reranker used
         _LABEL_MAP = {
@@ -455,6 +475,30 @@ def main():
         for metric_name, metric_val in dedup_metrics.items():
             row[f"DedupOracle_{metric_name}"] = metric_val
             print(f"  DedupOracle {metric_name}: {metric_val:.4f}")
+
+        # ── BestRewrite: LLM-selected best rewrite → BM25 → reranker ──
+        print(f"  Running BestRewrite N={n}...")
+        best_rewrite_t = BestRewriteTransformer(
+            n, dataset_name=constants.DATASET_NAME
+        )
+        best_rewrite_pipeline = (
+                best_rewrite_t >> bm25 >> get_text >> reranker
+        )
+
+        try:
+            best_result = pt.Experiment(
+                [best_rewrite_pipeline],
+                topics,
+                qrels,
+                eval_metrics=eval_metrics,
+                names=["BestRewrite"],
+            )
+            for col in best_result.columns:
+                if col != "name":
+                    row[f"BestRewrite_{col}"] = float(best_result[col].iloc[0])
+                    print(f"  BestRewrite {col}: {float(best_result[col].iloc[0]):.4f}")
+        except Exception as e:
+            print(f"  BestRewrite failed for N={n}: {e}")
 
         # ── Overlay experiment_2 fusion results ──
         if not exp2_df.empty:

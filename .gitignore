@@ -205,19 +205,53 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
-dexter/
+# Local IDE, agent, and workspace tooling
+.agent/
+.cursor/
 .idea/
+
+# Large local data, indices, caches, and model weights
 data/
+cache/
+index/
+indices/
+models/
+runs/
+
+# Third-party / cloned reference repositories
+dexter/
 DEXTER_/
 ORE/
-index/
-.cursor/
+ReformIR-DC92/
+gar_repro/
+
+# Local thesis manuscript, defense media, and personal scratch files
+thesis/
+thesis defense.*
+green_light_pratham.pptx
+temp.html
+expiermental_setup.md
+experiment_tracker.md
 TODO
-/models/*
-/results/exp*/plots/*
-/results/latex_tables/*
-.agent/*
-cache/*
-indices/*
-ReformIR-DC92/*
-scratch/*
+scratch/
+results_for_thesis/
+results_to_store(old)/
+
+# Exploratory notebooks and legacy scripts
+Dataset_exploration*.ipynb
+run_colab_experiment.ipynb
+scripts/old_download_models.py
+
+# Old, debug, and intermediate experiment runs (keep only final runs in git)
+results/**/old/
+results/**/OLD/
+results/**/test_rag_pipeline/
+results/**/exp_rag_mpi/
+results/**/reranker_comparison/
+results/wiki_musique/exp3/plots/
+results/wiki_musique/exp5/run_20260618_09*/
+results/wiki_musique/exp5/run_20260618_100*/
+results/wiki_musique/exp5/run_20260618_101*/
+results/wiki_musique/exp5/run_20260618_1030*/
+results/exp*/plots/*
+results/latex_tables/*

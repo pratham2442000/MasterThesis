@@ -9,8 +9,9 @@ Runs all setup steps needed before experiments can execute:
 Usage:
     python scripts/dataset_setup.py                  # run all steps
     python scripts/dataset_setup.py --steps index     # BM25 index only
-    python scripts/dataset_setup.py --steps rewrites  # query rewrites only
-    python scripts/dataset_setup.py --steps dense     # dense index only
+    python scripts/dataset_setup.py --steps rewrites      # query rewrites only
+    python scripts/dataset_setup.py --steps best_rewrite  # best rewrite selection only
+    python scripts/dataset_setup.py --steps dense         # dense index only
     python scripts/dataset_setup.py --steps index rewrites  # multiple steps
     python scripts/dataset_setup.py --skip-dense      # all except dense
 
@@ -31,7 +32,7 @@ import constants
 from code_base.dataset_factory import get_dataset
 
 
-def step_build_bm25_index():
+def step_build_bm25_index(force_rebuild: bool = False):
     """Step 1: Build BM25 index from the dataset corpus.
 
     For MSMARCO-passage, first tries to use PyTerrier's pre-built index
@@ -47,19 +48,19 @@ def step_build_bm25_index():
     print(f"  Index Directory: {INDEX_DIR}")
 
     # Check if index already exists at the configured path
-    if os.path.exists(constants.INDEX_PATH):
+    if os.path.exists(constants.INDEX_PATH) and not force_rebuild:
         print(f"  ✓ Index already exists at {constants.INDEX_PATH}")
         try:
             index = pt.IndexFactory.of(constants.INDEX_PATH, memory=True)
             n_docs = index.getCollectionStatistics().getNumberOfDocuments()
             print(f"  ✓ Index valid — {n_docs} documents")
-            print("  Skipping index creation.")
+            print("  Skipping index creation. Use --force-rebuild to rebuild.")
             return
         except Exception as e:
             print(f"  ✗ Index exists but is corrupt: {e}")
             print("  Will rebuild.")
 
-    if constants.DATASET_NAME == "msmarco-passage":
+    if constants.DATASET_NAME == "msmarco-passage" and not force_rebuild:
         # MSMARCO: Try PyTerrier's pre-built index first (auto-downloads)
         print("  Trying PyTerrier pre-built index for msmarco_passage...")
         try:
@@ -91,6 +92,12 @@ def step_build_bm25_index():
             else:
                 print(f"  ✓ Index already at configured path")
 
+            print()
+            print("  ⚠  WARNING: Pre-built index does NOT have meta.reverse.keys=docno.")
+            print("     Experiment 7 (ReformIR) requires reverse docno lookup for RM3.")
+            print("     To run experiment_7.py, re-index with:")
+            print("       python scripts/dataset_setup.py --steps index --force-rebuild")
+            print()
             return
 
         except Exception as e:
@@ -104,6 +111,7 @@ def step_build_bm25_index():
         indexer = pt.IterDictIndexer(
             INDEX_DIR, overwrite=True,
             meta={'docno': 256, 'text': 4096},
+            meta_reverse=['docno'],
         )
         index_ref = indexer.index(
             dataset.get_corpus_iter(),
@@ -118,6 +126,7 @@ def step_build_bm25_index():
         indexer = pt.IterDictIndexer(
             INDEX_DIR, overwrite=True,
             meta={'docno': 256},
+            meta_reverse=['docno'],
         )
         index_ref = indexer.index(
             dataset.get_corpus_iter(),
@@ -140,7 +149,8 @@ def step_build_bm25_index():
         os.makedirs(INDEX_DIR, exist_ok=True)
         indexer = pt.IterDictIndexer(
             INDEX_DIR, overwrite=True,
-            meta={'docno': 256, 'text': 4096}
+            meta={'docno': 256, 'text': 4096},
+            meta_reverse=['docno'],
         )
         index_ref = indexer.index(docs_df.to_dict(orient='records'))
 
@@ -195,6 +205,29 @@ def step_generate_rewrites():
     )
 
     print(f"  Rewrites saved: {len(df)} queries with {n_rewrites} rewrites each")
+
+
+def step_select_best_rewrites():
+    """Step 2b: Select the best rewrite per N value via LLM."""
+    print("\n" + "=" * 60)
+    print("STEP 2b: Selecting Best Rewrites via LLM")
+    print("=" * 60)
+
+    from code_base.llm_best_rewrite import preprep_best_rewrites
+
+    print(f"  Dataset: {constants.DATASET_NAME}")
+    print(f"  Split: {constants.DATA_SPLIT}")
+    print(f"  N values: {constants.EXPERIMENT_2_N_REWRITES}")
+
+    df = preprep_best_rewrites(
+        name=constants.DATASET_NAME,
+        split=constants.DATA_SPLIT,
+        path_dt=constants.DATA_PATH,
+        live=True,
+        n_values=constants.EXPERIMENT_2_N_REWRITES,
+    )
+
+    print(f"  Best rewrites saved: {len(df)} queries")
 
 
 def step_build_dense_index():
@@ -268,13 +301,17 @@ Examples:
     )
     parser.add_argument(
         '--steps', nargs='+',
-        choices=['index', 'rewrites', 'dense'],
+        choices=['index', 'rewrites', 'best_rewrite', 'dense'],
         default=None,
         help='Specific steps to run (default: all)'
     )
     parser.add_argument(
         '--skip-dense', action='store_true',
         help='Run all steps except dense indexing'
+    )
+    parser.add_argument(
+        '--force-rebuild', action='store_true',
+        help='Force rebuild BM25 index with reverse docno keys (needed for experiment_7/RM3)'
     )
 
     args = parser.parse_args()
@@ -286,9 +323,9 @@ Examples:
     if args.steps:
         steps = set(args.steps)
     elif args.skip_dense:
-        steps = {'index', 'rewrites'}
+        steps = {'index', 'rewrites', 'best_rewrite'}
     else:
-        steps = {'index', 'rewrites', 'dense'}
+        steps = {'index', 'rewrites', 'best_rewrite', 'dense'}
 
     print("=" * 60)
     print("Unified Dataset Setup")
@@ -301,10 +338,13 @@ Examples:
 
     # Execute steps in order
     if 'index' in steps:
-        step_build_bm25_index()
+        step_build_bm25_index(force_rebuild=args.force_rebuild)
 
     if 'rewrites' in steps:
         step_generate_rewrites()
+
+    if 'best_rewrite' in steps:
+        step_select_best_rewrites()
 
     if 'dense' in steps:
         step_build_dense_index()
@@ -319,6 +359,9 @@ Examples:
         n = constants.LLM_REWRITES_PER_QUERY
         fname = f"{constants.DATASET_NAME}_rewritten_queries_dataset_{n}_{constants.DATA_SPLIT}.csv"
         print(f"  Rewrites: {os.path.join(constants.DATA_PATH, fname)}")
+    if 'best_rewrite' in steps:
+        fname = f"{constants.DATASET_NAME}_best_rewrite_{constants.DATA_SPLIT}.csv"
+        print(f"  Best Rewrites: {os.path.join(constants.DATA_PATH, fname)}")
     if 'dense' in steps:
         print(f"  Dense Index: {constants.DENSE_INDEX_PATH}")
 
